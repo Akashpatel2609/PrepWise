@@ -1,0 +1,333 @@
+/* Custom CSS with your specified color scheme */
+:root {
+    --bg-white: #FFFFFF;
+    --btn-bg: #058ED9;
+    --border-purple: #623CEA;
+    --text-dark: #1B2021;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--bg-white);
+    color: var(--text-dark);
+    line-height: 1.6;
+}
+
+/* Navigation */
+.navbar {
+    border-bottom: 2px solid var(--border-purple);
+    padding: 1rem 2rem;
+    background-color: var(--bg-white);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.logo {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: var(--text-dark);
+    text-decoration: none;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.nav-links a {
+    color: var(--text-dark);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s;
+}
+
+.nav-links a:hover {
+    color: var(--btn-bg);
+}
+
+.profile-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--border-purple);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+}
+
+/* Buttons */
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: 2px solid var(--border-purple);
+    border-radius: 8px;
+    background-color: var(--btn-bg);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.btn:hover {
+    background-color: #047BC1;
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: var(--text-dark);
+}
+
+.btn-secondary:hover {
+    background-color: var(--border-purple);
+    color: white;
+}
+
+/* Forms */
+.form-container {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--border-purple);
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--btn-bg);
+    box-shadow: 0 0 0 3px rgba(5, 142, 217, 0.1);
+}
+
+.form-textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* Containers */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.page-container {
+    min-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+}
+
+.content-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Grid Layouts */
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    height: 80vh;
+}
+
+.window {
+    border: 2px solid var(--border-purple);
+    border-radius: 12px;
+    padding: 1.5rem;
+    background-color: var(--bg-white);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* Video Elements */
+.video-container {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    border: 2px solid var(--border-purple);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f0f0f0;
+}
+
+.video-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.video-controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.control-btn {
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--border-purple);
+    border-radius: 6px;
+    background-color: var(--btn-bg);
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.control-btn:hover {
+    background-color: #047BC1;
+}
+
+.control-btn.disabled {
+    background-color: #ccc;
+    border-color: #ccc;
+    cursor: not-allowed;
+}
+
+/* Timer */
+.timer {
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--btn-bg);
+    text-align: center;
+    margin: 1rem 0;
+}
+
+/* Question Display */
+.question-container {
+    background-color: #f8f9fa;
+    border: 2px solid var(--border-purple);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+.question-text {
+    font-size: 1.2rem;
+    line-height: 1.6;
+    color: var(--text-dark);
+}
+
+/* Feedback Page Styles */
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin: 2rem 0;
+}
+
+.analytics-card {
+    border: 2px solid var(--border-purple);
+    border-radius: 12px;
+    padding: 1.5rem;
+    background-color: var(--bg-white);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.analytics-card h3 {
+    color: var(--text-dark);
+    margin-bottom: 1rem;
+    border-bottom: 2px solid var(--border-purple);
+    padding-bottom: 0.5rem;
+}
+
+.transcript-item {
+    border-left: 4px solid var(--btn-bg);
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.timestamp {
+    color: var(--btn-bg);
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .nav-container {
+        padding: 0 1rem;
+    }
+    
+    .nav-links {
+        gap: 1rem;
+    }
+    
+    .grid-2 {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .form-container {
+        padding: 1rem;
+    }
+    
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Loading States */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--btn-bg);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+}
+
+.status-online {
+    background-color: #28a745;
+}
+
+.status-offline {
+    background-color: #dc3545;
+}
+
+.status-warning {
+    background-color: #ffc107;
+}

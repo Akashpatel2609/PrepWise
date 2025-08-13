@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepWise - Waiting Room</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('setup') }}" class="logo">PrepWise</a>
+            <div class="nav-links">
+                <a href="{{ url_for('analytics') }}">Analytics</a>
+                <a href="{{ url_for('setup') }}">AI Coach</a>
+                <div class="profile-icon">U</div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <div class="content-center">
+            <div style="text-align: center; max-width: 600px; margin: 0 auto;">
+                <h1 style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--text-dark);">
+                    Interview Waiting Room
+                </h1>
+                <p style="font-size: 1.2rem; color: #666; margin-bottom: 3rem;">
+                    Please check your camera and microphone before starting the interview
+                </p>
+
+                <!-- Camera Preview -->
+                <div class="video-container" style="margin-bottom: 2rem;">
+                    <video id="webcam" class="video-feed" autoplay muted playsinline>
+                        <p style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">
+                            Camera not available
+                        </p>
+                    </video>
+                    <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 10px;">
+                        <span class="status-indicator" id="cameraStatus"></span>
+                        <span class="status-indicator" id="micStatus"></span>
+                    </div>
+                </div>
+
+                <!-- Device Controls -->
+                <div class="video-controls" style="margin-bottom: 3rem;">
+                    <button id="toggleCamera" class="control-btn">
+                        📹 Camera: <span id="cameraText">Off</span>
+                    </button>
+                    <button id="toggleMic" class="control-btn">
+                        🎤 Microphone: <span id="micText">Off</span>
+                    </button>
+                    <button id="testAudio" class="control-btn">
+                        🔊 Test Audio
+                    </button>
+                </div>
+
+                <!-- System Check -->
+                <div style="background-color: #f8f9fa; border: 2px solid var(--border-purple); border-radius: 12px; padding: 2rem; margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem; color: var(--text-dark);">System Check</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; text-align: left;">
+                        <div>
+                            <span class="status-indicator status-warning" id="cameraCheck"></span>
+                            <span>Camera Access</span>
+                        </div>
+                        <div>
+                            <span class="status-indicator status-warning" id="micCheck"></span>
+                            <span>Microphone Access</span>
+                        </div>
+                        <div>
+                            <span class="status-indicator status-online"></span>
+                            <span>Internet Connection</span>
+                        </div>
+                        <div>
+                            <span class="status-indicator status-online"></span>
+                            <span>Browser Compatible</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interview Info -->
+                <div style="background-color: #e3f2fd; border: 2px solid var(--btn-bg); border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;">
+                    <h4 style="color: var(--text-dark); margin-bottom: 1rem;">Interview Details</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: left;">
+                        <div><strong>Questions:</strong> {{ session.get('num_questions', 6) }}</div>
+                        <div><strong>Time per Question:</strong> {{ session.get('minutes_per_question', 5) }} min</div>
+                        <div><strong>Total Time:</strong> {{ session.get('total_time', 30) }} min</div>
+                        <div><strong>Format:</strong> Video Interview</div>
+                    </div>
+                </div>
+
+                <!-- Start Button -->
+                <button id="startInterview" class="btn" style="padding: 1rem 2rem; font-size: 1.2rem; width: 100%; max-width: 300px;" disabled>
+                    <span id="startButtonText">Checking devices...</span>
+                </button>
+
+                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;">
+                    Make sure you're in a quiet environment with good lighting
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stream = null;
+        let cameraEnabled = false;
+        let micEnabled = false;
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('URL copied to clipboard! Open it in your browser.');
+            }).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('URL copied to clipboard! Open it in your browser.');
+            });
+        }
+
+        // Initialize media devices
+        async function initializeDevices() {
+            console.log('Initializing media devices...');
+            
+            try {
+                // Check if getUserMedia is supported
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('getUserMedia not supported in this browser');
+                }
+
+                // Check if we're in VS Code Simple Browser (which blocks camera)
+                const userAgent = navigator.userAgent;
+                if (userAgent.includes('Electron') && userAgent.includes('Code')) {
+                    const webcam = document.getElementById('webcam');
+                    webcam.innerHTML = `
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+                            <div style="color: #856404; font-weight: 600; margin-bottom: 8px;">Camera Blocked in VS Code</div>
+                            <div style="color: #856404; font-size: 14px; margin-bottom: 12px;">VS Code Simple Browser blocks camera access for security.</div>
+                            <div style="color: #856404; font-size: 12px; line-height: 1.4; margin-bottom: 16px;">
+                                Please open this page in your regular browser:<br>
+                                <strong>http://localhost:5000</strong>
+                            </div>
+                            <button onclick="copyToClipboard('http://localhost:5000')" style="padding: 8px 16px; background: #058ED9; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                Copy URL
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Update button - allow proceeding even in VS Code
+                    const startButton = document.getElementById('startInterview');
+                    const startButtonText = document.getElementById('startButtonText');
+                    if (startButton && startButtonText) {
+                        startButton.disabled = false;
+                        startButtonText.textContent = 'Start Interview (No Camera)';
+                    }
+                    
+                    return;
+                }
+
+                // Request permissions with specific constraints
+                console.log('Requesting camera and microphone access...');
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }, 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                console.log('Media stream obtained successfully:', stream);
+
+                // Display video
+                const video = document.getElementById('webcam');
+                if (video) {
+                    video.srcObject = stream;
+                    
+                    // Wait for video to be ready
+                    video.onloadedmetadata = () => {
+                        console.log('Video metadata loaded, playing...');
+                        video.play().catch(e => console.error('Error playing video:', e));
+                    };
+                    
+                    video.onerror = (e) => {
+                        console.error('Video element error:', e);
+                    };
+                } else {
+                    console.error('Video element not found');
+                }
+
+                // Update status based on actual stream tracks
+                const videoTracks = stream.getVideoTracks();
+                const audioTracks = stream.getAudioTracks();
+                
+                cameraEnabled = videoTracks.length > 0 && videoTracks[0].readyState === 'live';
+                micEnabled = audioTracks.length > 0 && audioTracks[0].readyState === 'live';
+                
+                console.log('Camera enabled:', cameraEnabled, 'Video tracks:', videoTracks.length);
+                console.log('Microphone enabled:', micEnabled, 'Audio tracks:', audioTracks.length);
+                
+                updateDeviceStatus();
+                updateSystemCheck();
+
+                // Enable start button (always allow clicking for user choice)
+                const startButton = document.getElementById('startInterview');
+                const startButtonText = document.getElementById('startButtonText');
+                if (startButton && startButtonText) {
+                    startButton.disabled = false;
+                    if (cameraEnabled && micEnabled) {
+                        startButtonText.textContent = 'Start Interview';
+                    } else {
+                        startButtonText.textContent = 'Start Interview (Media Issues)';
+                    }
+                }
+
+                console.log('Device initialization complete');
+
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+                handleMediaError(error);
+            }
+        }
+
+        function updateDeviceStatus() {
+            // Update camera status
+            const cameraStatus = document.getElementById('cameraStatus');
+            const cameraText = document.getElementById('cameraText');
+            if (cameraEnabled) {
+                cameraStatus.className = 'status-indicator status-online';
+                cameraText.textContent = 'On';
+            } else {
+                cameraStatus.className = 'status-indicator status-offline';
+                cameraText.textContent = 'Off';
+            }
+
+            // Update mic status
+            const micStatus = document.getElementById('micStatus');
+            const micText = document.getElementById('micText');
+            if (micEnabled) {
+                micStatus.className = 'status-indicator status-online';
+                micText.textContent = 'On';
+            } else {
+                micStatus.className = 'status-indicator status-offline';
+                micText.textContent = 'Off';
+            }
+        }
+
+        function updateSystemCheck() {
+            const cameraCheck = document.getElementById('cameraCheck');
+            const micCheck = document.getElementById('micCheck');
+
+            if (cameraEnabled) {
+                cameraCheck.className = 'status-indicator status-online';
+            } else {
+                cameraCheck.className = 'status-indicator status-offline';
+            }
+
+            if (micEnabled) {
+                micCheck.className = 'status-indicator status-online';
+            } else {
+                micCheck.className = 'status-indicator status-offline';
+            }
+        }
+
+        function handleMediaError(error) {
+            console.error('Media error details:', error);
+            
+            let message = 'Unable to access camera and microphone. ';
+            let troubleshooting = '';
+            
+            if (error.name === 'NotAllowedError') {
+                message += 'Please allow camera and microphone permissions.';
+                troubleshooting = 'Click the camera icon in your browser address bar to grant permissions.';
+            } else if (error.name === 'NotFoundError') {
+                message += 'No camera or microphone found.';
+                troubleshooting = 'Please connect a camera and microphone to your device.';
+            } else if (error.name === 'NotSupportedError') {
+                message += 'Your browser does not support camera/microphone access.';
+                troubleshooting = 'Please use Chrome, Firefox, Safari, or Edge.';
+            } else if (error.name === 'SecurityError') {
+                message += 'Camera access blocked due to security settings.';
+                troubleshooting = 'Make sure you are accessing the site via HTTPS or localhost.';
+            } else {
+                message += 'Please check your device settings.';
+                troubleshooting = error.message || 'Unknown error occurred.';
+            }
+            
+            // Update UI to show error
+            const startButtonText = document.getElementById('startButtonText');
+            const webcam = document.getElementById('webcam');
+            
+            if (startButtonText) {
+                startButtonText.textContent = 'Media Access Required';
+            }
+            
+            if (webcam) {
+                webcam.style.background = '#ffebee';
+                webcam.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📷</div>
+                        <div style="color: #d32f2f; font-weight: 600; margin-bottom: 8px;">Camera Access Required</div>
+                        <div style="color: #666; font-size: 14px; margin-bottom: 12px;">${message}</div>
+                        <div style="color: #999; font-size: 12px; line-height: 1.4;">${troubleshooting}</div>
+                        <button onclick="initializeDevices()" style="margin-top: 16px; padding: 8px 16px; background: #058ED9; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Update status indicators
+            updateDeviceStatus();
+            updateSystemCheck();
+        }
+
+        // Device control buttons
+        document.getElementById('toggleCamera').addEventListener('click', function() {
+            if (stream) {
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    cameraEnabled = videoTrack.enabled;
+                    updateDeviceStatus();
+                }
+            }
+        });
+
+        document.getElementById('toggleMic').addEventListener('click', function() {
+            if (stream) {
+                const audioTrack = stream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    micEnabled = audioTrack.enabled;
+                    updateDeviceStatus();
+                }
+            }
+        });
+
+        document.getElementById('testAudio').addEventListener('click', function() {
+            // Simple audio test - play a beep
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800;
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        });
+
+        // Start interview button
+        document.getElementById('startInterview').addEventListener('click', function() {
+            console.log('Start Interview button clicked');
+            console.log('Camera enabled:', cameraEnabled);
+            console.log('Mic enabled:', micEnabled);
+            
+            // Always allow proceeding for now (we'll fix this after debugging)
+            console.log('Proceeding to interview page...');
+            
+            try {
+                const interviewUrl = "{{ url_for('interview') }}";
+                console.log('Redirecting to:', interviewUrl);
+                window.location.href = interviewUrl;
+            } catch (error) {
+                console.error('Error during redirect:', error);
+                alert('Error redirecting to interview page: ' + error.message);
+            }
+        });
+
+        // Initialize on page load
+        window.addEventListener('load', initializeDevices);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>

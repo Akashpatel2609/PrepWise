@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepWise - Interview in Progress</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('setup') }}" class="logo">PrepWise</a>
+            <div class="nav-links">
+                <span style="font-weight: 600; color: var(--btn-bg);">Interview in Progress</span>
+                <div class="profile-icon">U</div>
+            </div>
+        </div>
+    </nav>
+
+    <div style="padding: 1.5rem;">
+        <!-- Interview Header -->
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h2 style="color: var(--text-dark); margin-bottom: 0.5rem;">
+                Question <span id="currentQuestion">1</span> of {{ num_questions }}
+            </h2>
+            <div class="timer" id="questionTimer">{{ minutes_per_question }}:00</div>
+        </div>
+
+        <!-- Main Interview Grid -->
+        <div class="grid-2">
+            <!-- Question Window -->
+            <div class="window">
+                <div style="height: 100%; display: flex; flex-direction: column;">
+                    <h3 style="color: var(--text-dark); margin-bottom: 1rem; border-bottom: 2px solid var(--border-purple); padding-bottom: 0.5rem;">
+                        Interview Question
+                    </h3>
+                    
+                    <div class="question-container" style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                        <p class="question-text" id="questionText">
+                            Loading your personalized question...
+                        </p>
+                        
+                        <!-- Hint Section -->
+                        <div id="hintContainer" style="margin-top: 1.5rem; padding: 1rem; background: #f8f9fa; border-left: 4px solid var(--border-purple); border-radius: 0 8px 8px 0; display: none;">
+                            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                                <span style="color: var(--border-purple); font-weight: 600; font-size: 0.9rem;">💡 Helpful Hint</span>
+                            </div>
+                            <p id="hintText" style="color: #666; font-size: 0.9rem; margin: 0; line-height: 1.4;"></p>
+                        </div>
+                    </div>
+
+                    <!-- Question Controls -->
+                    <div style="display: flex; justify-content: space-between; margin-top: 1.5rem;">
+                        <button id="skipQuestion" class="btn btn-secondary">
+                            Skip Question
+                        </button>
+                        <div style="display: flex; gap: 1rem;">
+                            <button id="pauseInterview" class="btn btn-secondary">
+                                ⏸️ Pause
+                            </button>
+                            <button id="nextQuestion" class="btn">
+                                Next Question →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Feed Window -->
+            <div class="window">
+                <div style="height: 100%; display: flex; flex-direction: column;">
+                    <h3 style="color: var(--text-dark); margin-bottom: 1rem; border-bottom: 2px solid var(--border-purple); padding-bottom: 0.5rem;">
+                        Video Feed
+                    </h3>
+
+                    <div class="video-container" style="flex: 1; margin-bottom: 1rem;">
+                        <video id="interviewWebcam" class="video-feed" autoplay muted playsinline></video>
+                        
+                        <!-- Recording Indicator -->
+                        <div style="position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 0.5rem; background: rgba(0,0,0,0.7); padding: 0.5rem; border-radius: 4px;">
+                            <div style="width: 8px; height: 8px; background: #ff4444; border-radius: 50%; animation: pulse 1s infinite;"></div>
+                            <span style="color: white; font-size: 0.8rem;">REC</span>
+                        </div>
+
+                        <!-- Analysis Status -->
+                        <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 0.5rem; border-radius: 4px;">
+                            <div style="color: white; font-size: 0.8rem;">
+                                <div>🎯 Body Language: <span id="postureStatus">Analyzing...</span></div>
+                                <div>🎤 Speech: <span id="speechStatus">Listening...</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Video Controls -->
+                    <div class="video-controls">
+                        <button id="toggleMicInterview" class="control-btn">
+                            🎤 <span id="micStatusText">On</span>
+                        </button>
+                        <button id="toggleCameraInterview" class="control-btn">
+                            📹 <span id="cameraStatusText">On</span>
+                        </button>
+                        <button id="toggleAnalysis" class="control-btn">
+                            📊 Analysis: <span id="analysisStatusText">On</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interview Complete Modal -->
+    <div id="completeModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 12px; text-align: center; max-width: 400px;">
+            <h3 style="color: var(--text-dark); margin-bottom: 1rem;">🎉 Interview Complete!</h3>
+            <p style="color: #666; margin-bottom: 2rem;">Thank you for completing the interview. Your responses have been analyzed and your feedback report is ready.</p>
+            <button onclick="goToFeedback()" class="btn" style="width: 100%;">
+                View Feedback Report
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Interview state
+        let currentQuestionIndex = 1;
+        let totalQuestions = {{ num_questions or 5 }};
+        let minutesPerQuestion = {{ minutes_per_question or 2 }};
+        
+        console.log('📊 Interview Configuration:');
+        console.log('   Total Questions:', totalQuestions);
+        console.log('   Minutes per Question:', minutesPerQuestion);
+        console.log('   Current Question Index:', currentQuestionIndex);
+        let timeRemaining = minutesPerQuestion * 60; // seconds
+        let timerInterval;
+        
+        // Debug: Log the session values
+        console.log('Interview initialized with:');
+        console.log('Total Questions:', totalQuestions);
+        console.log('Minutes per Question:', minutesPerQuestion);
+        console.log('Time Remaining:', timeRemaining);
+        
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        // Questions array (will be populated by AI)
+        let questions = [];
+        let currentQuestionText = "";
+
+        // Device states
+        let micEnabled = true;
+        let cameraEnabled = true;
+        let analysisEnabled = true;
+
+        // Interview data tracking
+        let interviewData = {
+            total_words: 0,
+            total_speaking_time: 0,
+            total_questions: totalQuestions,
+            questions_answered: 0,
+            questions_skipped: 0,
+            transcript: [],
+            filler_words: { um: 0, uh: 0, like: 0 },
+            posture_data: [],
+            sample_response: ""
+        };
+
+        // Speaking time tracking
+        let questionStartTime = 0;
+        let speakingTimeForCurrentQuestion = 0;
+        let isSpeaking = false;
+        let speakingStartTime = 0;
+
+        // Speech recognition for word counting
+        let recognition = null;
+        let isListening = false;
+
+        function initializeSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+
+                recognition.onresult = function(event) {
+                    let interimTranscript = '';
+                    let finalTranscript = '';
+                    let hasNewSpeech = false;
+
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+                        const confidence = event.results[i][0].confidence;
+                        
+                        // Only process speech with high confidence and sufficient length
+                        if (confidence > 0.7 && transcript.trim().length > 2) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += transcript;
+                                hasNewSpeech = true;
+                                
+                                // Count words (only for meaningful speech)
+                                const words = transcript.trim().split(/\s+/).filter(word => word.length > 0);
+                                if (words.length > 0) {
+                                    interviewData.total_words += words.length;
+                                    
+                                    // Count filler words
+                                    words.forEach(word => {
+                                        const lowerWord = word.toLowerCase().replace(/[^\w]/g, '');
+                                        if (lowerWord === 'um') interviewData.filler_words.um++;
+                                        if (lowerWord === 'uh') interviewData.filler_words.uh++;
+                                        if (lowerWord === 'like') interviewData.filler_words.like++;
+                                    });
+
+                                    // Better transcript consolidation - only store substantial responses
+                                    const currentTime = new Date().toLocaleTimeString();
+                                    const trimmedResponse = transcript.trim();
+                                    
+                                    // Check if this is a continuation of the previous response
+                                    const lastEntry = interviewData.transcript[interviewData.transcript.length - 1];
+                                    const shouldConsolidate = lastEntry && 
+                                        lastEntry.question_number === currentQuestionIndex &&
+                                        (Date.now() - lastEntry.lastUpdated) < 5000; // Within 5 seconds
+                                    
+                                    if (shouldConsolidate && trimmedResponse.length > 3) {
+                                        // Append to existing entry
+                                        lastEntry.response += " " + trimmedResponse;
+                                        lastEntry.duration = speakingTimeForCurrentQuestion;
+                                        lastEntry.confidence = Math.max(lastEntry.confidence, confidence);
+                                        lastEntry.lastUpdated = Date.now();
+                                    } else if (trimmedResponse.length > 5) {
+                                        // Create new entry only for substantial responses
+                                        interviewData.transcript.push({
+                                            question_number: currentQuestionIndex,
+                                            question: currentQuestionText,
+                                            response: trimmedResponse,
+                                            timestamp: currentTime,
+                                            duration: speakingTimeForCurrentQuestion,
+                                            confidence: confidence,
+                                            lastUpdated: Date.now()
+                                        });
+                                    }
+
+                                    // Store first substantial response as sample
+                                    if (interviewData.sample_response === "" && trimmedResponse.length > 15) {
+                                        interviewData.sample_response = trimmedResponse;
+                                    }
+
+                                    console.log('Valid speech detected. Words:', words.length, 'Confidence:', confidence);
+                                    console.log('Total words so far:', interviewData.total_words);
+                                }
+                            } else {
+                                // Interim results indicate user is speaking (only if meaningful)
+                                if (transcript.trim().length > 5 && confidence > 0.5) {
+                                    hasNewSpeech = true;
+                                }
+                            }
+                        } else {
+                            console.log('Low confidence speech ignored. Confidence:', confidence, 'Text:', transcript);
+                        }
+                    }
+
+                    // Track speaking time
+                    if (hasNewSpeech && !isSpeaking) {
+                        // User started speaking
+                        isSpeaking = true;
+                        speakingStartTime = Date.now();
+                        console.log('User started speaking');
+                    }
+                };
+
+                recognition.onend = function() {
+                    // User stopped speaking
+                    if (isSpeaking) {
+                        const speakingDuration = (Date.now() - speakingStartTime) / 1000;
+                        interviewData.total_speaking_time += speakingDuration;
+                        speakingTimeForCurrentQuestion += speakingDuration;
+                        isSpeaking = false;
+                        console.log('User stopped speaking. Duration:', speakingDuration, 'seconds');
+                    }
+                    
+                    // Restart recognition if still listening
+                    if (isListening) {
+                        setTimeout(() => {
+                            if (isListening) {
+                                recognition.start();
+                            }
+                        }, 100);
+                    }
+                };
+
+                recognition.onerror = function(event) {
+                    console.log('Speech recognition error:', event.error);
+                };
+            } else {
+                console.log('Speech recognition not supported');
+            }
+        }
+
+        function startListening() {
+            if (recognition && !isListening) {
+                recognition.start();
+                isListening = true;
+                console.log('Started speech recognition');
+            }
+        }
+
+        function stopListening() {
+            if (recognition && isListening) {
+                recognition.stop();
+                isListening = false;
+                console.log('Stopped speech recognition');
+            }
+        }
+
+        // Initialize interview
+        async function initializeInterview() {
+            try {
+                // Reset questions for fresh start
+                console.log('🔄 Resetting questions for fresh interview start...');
+                await fetch('/api/reset-questions', { method: 'POST' });
+                
+                // Get media stream
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+
+                const video = document.getElementById('interviewWebcam');
+                video.srcObject = mediaStream;
+
+                // Initialize speech recognition
+                initializeSpeechRecognition();
+
+                // Start recording
+                startRecording();
+
+                // Start listening
+                startListening();
+
+                // Load first question
+                console.log('📝 Loading first question...');
+                await loadNextQuestion();
+
+                // Start timer
+                startTimer();
+
+                // Start analysis simulation
+                startAnalysisSimulation();
+
+            } catch (error) {
+                console.error('Error initializing interview:', error);
+                // Continue with limited functionality
+                console.log('📝 Loading fallback question...');
+                await loadNextQuestion();
+                startTimer();
+                startAnalysisSimulation();
+            }
+        }
+
+        // Recording functions
+        function startRecording() {
+            if (mediaStream) {
+                mediaRecorder = new MediaRecorder(mediaStream);
+                
+                mediaRecorder.ondataavailable = function(event) {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.start(1000); // Record in 1-second chunks
+                isRecording = true;
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+            }
+        }
+
+        // Question management
+        async function loadNextQuestion() {
+            try {
+                console.log('🔄 Fetching new question from server...');
+                const response = await fetch('/api/generate-question');
+                const data = await response.json();
+                console.log('📝 Received question data:', data);
+                
+                currentQuestionText = data.question;
+                const questionElement = document.getElementById('questionText');
+                questionElement.textContent = currentQuestionText;
+                console.log('✅ Updated question text:', currentQuestionText);
+                console.log('✅ Question element content now:', questionElement.textContent);
+                
+                // Force a visual refresh
+                questionElement.style.opacity = '0.5';
+                setTimeout(() => {
+                    questionElement.style.opacity = '1';
+                }, 100);
+                
+                // Display hint if available
+                if (data.hint) {
+                    document.getElementById('hintText').textContent = data.hint;
+                    document.getElementById('hintContainer').style.display = 'block';
+                    console.log('💡 Added hint:', data.hint);
+                } else {
+                    document.getElementById('hintContainer').style.display = 'none';
+                    console.log('❌ No hint provided');
+                }
+            } catch (error) {
+                console.error('❌ Error loading question:', error);
+                document.getElementById('questionText').textContent = 'Error loading question. Please try again.';
+                document.getElementById('hintContainer').style.display = 'none';
+            }
+        }
+
+        // Timer functions
+        function startTimer() {
+            clearInterval(timerInterval); // Clear any existing timer
+            timeRemaining = minutesPerQuestion * 60; // Reset time
+            questionStartTime = Date.now();
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                updateTimerDisplay();
+
+                if (timeRemaining <= 0) {
+                    console.log('⏰ Timer expired for question', currentQuestionIndex);
+                    clearInterval(timerInterval); // Stop the timer
+                    // Auto advance to next question when time expires
+                    document.getElementById('nextQuestion').click();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            // Prevent negative time display
+            const displayTime = Math.max(0, timeRemaining);
+            const minutes = Math.floor(displayTime / 60);
+            const seconds = displayTime % 60;
+            document.getElementById('questionTimer').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval); // Stop any running timer
+            timeRemaining = minutesPerQuestion * 60;
+            updateTimerDisplay();
+        }
+
+        // Question navigation - PROPER VERSION
+        async function nextQuestion() {
+            console.log('🔄 nextQuestion() called');
+            console.log('   Current question:', currentQuestionIndex, 'of', totalQuestions);
+            
+            try {
+                // Check if we've completed all questions BEFORE incrementing
+                if (currentQuestionIndex >= totalQuestions) {
+                    console.log('🏁 All questions completed!');
+                    clearInterval(timerInterval); // Stop timer
+                    
+                    // Redirect to feedback page
+                    window.location.href = '/feedback';
+                    return;
+                }
+                
+                // Increment question counter
+                currentQuestionIndex++;
+                console.log('📈 Moving to question:', currentQuestionIndex);
+                
+                // Update display
+                document.getElementById('currentQuestion').textContent = currentQuestionIndex;
+                
+                // Reset timer for new question
+                resetTimer();
+                startTimer();
+                
+                // Load new question
+                console.log('🔄 Loading question', currentQuestionIndex, '...');
+                await loadNextQuestion();
+                console.log('✅ Question', currentQuestionIndex, 'loaded successfully');
+                
+            } catch (error) {
+                console.error('❌ Error in nextQuestion():', error);
+            }
+        }
+
+        function skipQuestion() {
+            if (confirm('Are you sure you want to skip this question? This will negatively impact your score.')) {
+                interviewData.questions_skipped++;
+                console.log('Question manually skipped');
+                
+                // Use the same logic as nextQuestion but mark as skipped
+                if (currentQuestionIndex >= totalQuestions) {
+                    console.log('🏁 All questions completed!');
+                    clearInterval(timerInterval);
+                    window.location.href = '/feedback';
+                    return;
+                }
+                
+                // Increment question counter
+                currentQuestionIndex++;
+                console.log('⏭️ Skipping to question:', currentQuestionIndex);
+                
+                // Update display
+                document.getElementById('currentQuestion').textContent = currentQuestionIndex;
+                
+                // Reset timer for new question
+                resetTimer();
+                startTimer();
+                
+                // Load new question
+                loadNextQuestion();
+            }
+        }
+
+        // Analysis simulation
+        function startAnalysisSimulation() {
+            // Simulate posture analysis with correct model classes
+            setInterval(() => {
+                const postureStates = ['Good Posture', 'Slouching', 'Confident Expression', 'Nervous Expression'];
+                const randomState = postureStates[Math.floor(Math.random() * postureStates.length)];
+                document.getElementById('postureStatus').textContent = randomState;
+                
+                // Store posture data for scoring
+                interviewData.posture_data.push({
+                    posture_class: randomState,
+                    timestamp: Date.now()
+                });
+                
+                // Keep only recent posture data (last 50 readings)
+                if (interviewData.posture_data.length > 50) {
+                    interviewData.posture_data = interviewData.posture_data.slice(-50);
+                }
+            }, 3000);
+
+            // Simulate speech analysis (only when actually speaking)
+            setInterval(() => {
+                if (isSpeaking && interviewData.total_words > 0) {
+                    const speechStates = ['Clear speech', 'Filler words detected', 'Good pace', 'Low volume'];
+                    const randomState = speechStates[Math.floor(Math.random() * speechStates.length)];
+                    document.getElementById('speechStatus').textContent = randomState;
+                } else {
+                    document.getElementById('speechStatus').textContent = 'Listening...';
+                }
+            }, 2000);
+        }
+
+        // Interview completion
+        async function completeInterview() {
+            clearInterval(timerInterval);
+            stopRecording();
+            stopListening();
+
+            // Submit interview data to backend for analysis
+            try {
+                const response = await fetch('/api/submit-interview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(interviewData)
+                });
+
+                if (response.ok) {
+                    console.log('Interview data submitted successfully');
+                    console.log('Final data:', interviewData);
+                } else {
+                    console.error('Failed to submit interview data');
+                }
+            } catch (error) {
+                console.error('Error submitting interview data:', error);
+            }
+
+            document.getElementById('completeModal').style.display = 'block';
+        }
+
+        function goToFeedback() {
+            window.location.href = "{{ url_for('feedback') }}";
+        }
+
+        // Device controls
+        document.getElementById('toggleMicInterview').addEventListener('click', function() {
+            if (mediaStream) {
+                const audioTrack = mediaStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    micEnabled = audioTrack.enabled;
+                    document.getElementById('micStatusText').textContent = micEnabled ? 'On' : 'Off';
+                    this.style.backgroundColor = micEnabled ? 'var(--btn-bg)' : '#dc3545';
+                }
+            }
+        });
+
+        document.getElementById('toggleCameraInterview').addEventListener('click', function() {
+            if (mediaStream) {
+                const videoTrack = mediaStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    cameraEnabled = videoTrack.enabled;
+                    document.getElementById('cameraStatusText').textContent = cameraEnabled ? 'On' : 'Off';
+                    this.style.backgroundColor = cameraEnabled ? 'var(--btn-bg)' : '#dc3545';
+                }
+            }
+        });
+
+        document.getElementById('toggleAnalysis').addEventListener('click', function() {
+            analysisEnabled = !analysisEnabled;
+            document.getElementById('analysisStatusText').textContent = analysisEnabled ? 'On' : 'Off';
+            this.style.backgroundColor = analysisEnabled ? 'var(--btn-bg)' : '#dc3545';
+        });
+
+        // Button event listeners
+        document.getElementById('nextQuestion').addEventListener('click', nextQuestion);
+        document.getElementById('skipQuestion').addEventListener('click', skipQuestion);
+
+        document.getElementById('pauseInterview').addEventListener('click', function() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                this.textContent = '▶️ Resume';
+                this.onclick = function() {
+                    startTimer();
+                    this.textContent = '⏸️ Pause';
+                    this.onclick = document.getElementById('pauseInterview').onclick;
+                };
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+        });
+
+        // Add pulse animation for recording indicator
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.5; }
+                100% { opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Initialize interview on page load
+        window.addEventListener('load', function() {
+            console.log('🚀 Page loaded - initializing interview...');
+            initializeInterview();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepWise - Interview Feedback</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('setup') }}" class="logo">PrepWise</a>
+            <div class="nav-links">
+                <a href="{{ url_for('analytics') }}">Analytics</a>
+                <a href="{{ url_for('setup') }}">AI Coach</a>
+                <div class="profile-icon">U</div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container" style="padding: 2rem 0;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 3rem;">
+            <h1 style="color: var(--text-dark); font-size: 2.5rem; margin-bottom: 0.5rem;">
+                Interview Analytics & Feedback
+            </h1>
+            <p style="color: #666; font-size: 1.2rem;">
+                Detailed analysis of your interview performance
+            </p>
+            <div style="background: linear-gradient(135deg, var(--btn-bg), var(--border-purple)); color: white; display: inline-block; padding: 0.5rem 1rem; border-radius: 20px; margin-top: 1rem;">
+                <strong>Overall Score: {{ data.overall_score }}/100</strong>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
+            <div class="analytics-card" style="text-align: center;">
+                <h3>🎤 Speech Quality</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">{{ data.speech_analysis.score }}%</div>
+                <p>
+                    {% if data.speech_analysis.score >= 80 %}
+                        Excellent speech quality with clear articulation
+                    {% elif data.speech_analysis.score >= 60 %}
+                        Good speech quality with minor improvements needed
+                    {% elif data.speech_analysis.score >= 40 %}
+                        Adequate speech quality, room for improvement
+                    {% elif data.speech_analysis.score >= 20 %}
+                        Below average speech quality, practice recommended
+                    {% else %}
+                        Poor speech quality, significant improvement needed
+                    {% endif %}
+                </p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>🎯 Body Language</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">{{ data.body_language.posture_score }}%</div>
+                <p>
+                    {% if data.body_language.posture_score >= 80 %}
+                        Excellent posture and confident body language
+                    {% elif data.body_language.posture_score >= 60 %}
+                        Good posture with some room for improvement
+                    {% elif data.body_language.posture_score >= 40 %}
+                        Average posture, work on maintaining confidence
+                    {% elif data.body_language.posture_score >= 20 %}
+                        Poor posture, significant improvement needed
+                    {% else %}
+                        Very poor posture and body language
+                    {% endif %}
+                </p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>⏱️ Response Time</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">
+                    {% set response_time_score = ((data.overall_score + data.speech_analysis.score) / 2) | int %}
+                    {{ response_time_score }}%
+                </div>
+                <p>
+                    {% if response_time_score >= 80 %}
+                        Excellent timing and pace throughout
+                    {% elif response_time_score >= 60 %}
+                        Good timing with consistent pace
+                    {% elif response_time_score >= 40 %}
+                        Average timing, could improve pace
+                    {% else %}
+                        Poor timing, work on response pace
+                    {% endif %}
+                </p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>💬 Communication</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">
+                    {% set communication_score = ((data.speech_analysis.score + data.overall_score) / 2) | int %}
+                    {{ communication_score }}%
+                </div>
+                <p>
+                    {% if communication_score >= 80 %}
+                        Clear and structured responses
+                    {% elif communication_score >= 60 %}
+                        Good communication with minor improvements
+                    {% elif communication_score >= 40 %}
+                        Average communication skills
+                    {% else %}
+                        Communication needs significant improvement
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Main Analytics Grid -->
+        <div class="analytics-grid">
+            <!-- Interview Transcript -->
+            <div class="analytics-card" style="grid-column: span 2;">
+                <h3>📝 Interview Transcript with Analysis</h3>
+                <div style="height: 400px; overflow-y: auto;">
+                    {% for item in data.transcript %}
+                    <div class="transcript-item">
+                        <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 0.5rem;">
+                            <h4 style="color: var(--text-dark);">Question {{ loop.index }}</h4>
+                            <span class="timestamp">{{ item.timestamp }}</span>
+                        </div>
+                        <p style="font-weight: 600; color: var(--border-purple); margin-bottom: 0.5rem;">
+                            {{ item.question }}
+                        </p>
+                        <p style="margin-bottom: 0.5rem; line-height: 1.6;">
+                            {{ item.response }}
+                        </p>
+                        <div style="display: flex; gap: 1rem; font-size: 0.9rem; color: #666;">
+                            <span>Duration: 
+                                {% if item.duration is number %}
+                                    {{ (item.duration // 60)|int }}:{{ "%02d"|format((item.duration % 60)|int) }}
+                                {% else %}
+                                    {{ item.duration }}
+                                {% endif %}
+                            </span>
+                            <span>•</span>
+                            <span>Words: ~{{ (item.response|length / 5)|round|int }}</span>
+                            <span>•</span>
+                            <span>WPM: ~{% if item.duration is number and item.duration > 0 %}{{ ((item.response|length / 5) / item.duration * 60)|round|int }}{% else %}0{% endif %}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Speech Analysis -->
+            <div class="analytics-card">
+                <h3>🗣️ Speech Analysis</h3>
+                <div style="margin-bottom: 2rem;">
+                    <h4>Filler Words Usage</h4>
+                    <canvas id="fillerWordsChart" style="max-height: 200px;"></canvas>
+                </div>
+                <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                    <h4 style="margin-bottom: 1rem;">Speech Metrics</h4>
+                    <div style="display: grid; gap: 0.5rem;">
+                        <div style="display: flex; justify-content: between;">
+                            <span>Speaking Pace:</span>
+                            <strong>{{ data.speech_analysis.speaking_pace }}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: between;">
+                            <span>Clarity Score:</span>
+                            <strong>{{ data.speech_analysis.clarity }}%</strong>
+                        </div>
+                        <div style="display: flex; justify-content: between;">
+                            <span>Total Filler Words:</span>
+                            <strong>{{ data.speech_analysis.filler_words.values()|sum }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Body Language Analysis -->
+            <div class="analytics-card">
+                <h3>🏃 Body Language Analysis</h3>
+                <div style="margin-bottom: 2rem;">
+                    <h4>Posture Timeline</h4>
+                    <canvas id="postureChart" style="max-height: 200px;"></canvas>
+                </div>
+                <div style="background-color: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                    <h4 style="margin-bottom: 1rem;">Body Language Metrics</h4>
+                    <div style="display: grid; gap: 0.5rem;">
+                        <div style="display: flex; justify-content: between;">
+                            <span>Posture Score:</span>
+                            <strong>{{ data.body_language.posture_score }}%</strong>
+                        </div>
+                        <div style="display: flex; justify-content: between;">
+                            <span>Eye Contact:</span>
+                            <strong>{{ data.body_language.eye_contact }}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: between;">
+                            <span>Gestures:</span>
+                            <strong>{{ data.body_language.gestures }}</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Over Time -->
+            <div class="analytics-card" style="grid-column: span 2;">
+                <h3>📈 Performance Trends</h3>
+                <canvas id="performanceChart" style="max-height: 300px;"></canvas>
+            </div>
+
+            <!-- Personalized Analysis & Recommendations Side by Side -->
+            {% if data.ai_feedback %}
+            <div class="analytics-card" style="border-left: 4px solid #6c63ff;">
+                <h3>👤 Personalized Feedback</h3>
+                <div style="background: linear-gradient(135deg, #f8f9ff, #fff); padding: 1.5rem; border-radius: 8px; border: 1px solid #e8e8ff;">
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #6c63ff; margin-bottom: 0.8rem; font-size: 1.1rem;">📊 Performance Overview</h4>
+                        <p style="margin-bottom: 1rem; line-height: 1.6; color: #333;">
+                            Based on your interview responses, you demonstrated <strong>{{ data.total_words }} words</strong> 
+                            across <strong>{{ data.transcript|length }} responses</strong> with an average confidence level of 
+                            <strong>{{ "%.1f"|format((data.transcript|map(attribute='confidence')|sum / data.transcript|length * 100) if data.transcript else 0) }}%</strong>.
+                        </p>
+                    </div>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <h4 style="color: #6c63ff; margin-bottom: 0.8rem; font-size: 1.1rem;">🎯 Key Observations</h4>
+                        <div style="background: #f0f8ff; padding: 1rem; border-radius: 6px; border-left: 3px solid #4a90e2;">
+                            <p style="margin: 0; line-height: 1.6; color: #333; font-size: 1rem;">
+                                {{ data.ai_feedback }}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: #6c63ff; margin-bottom: 0.8rem; font-size: 1.1rem;">📈 Progress Indicators</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8rem;">
+                            <div style="text-align: center; padding: 0.8rem; background: white; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="font-size: 1.3rem; font-weight: bold; color: #28a745;">{{ data.speech_analysis.score }}%</div>
+                                <div style="font-size: 0.8rem; color: #666;">Speech Quality</div>
+                            </div>
+                            <div style="text-align: center; padding: 0.8rem; background: white; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="font-size: 1.3rem; font-weight: bold; color: #6c63ff;">{{ data.body_language.posture_score }}%</div>
+                                <div style="font-size: 0.8rem; color: #666;">Posture Score</div>
+                            </div>
+                            <div style="text-align: center; padding: 0.8rem; background: white; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="font-size: 1.3rem; font-weight: bold; color: #ffc107;">{{ data.response_time_score }}%</div>
+                                <div style="font-size: 0.8rem; color: #666;">Response Time</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Recommendations -->
+            <div class="analytics-card">
+                <h3>💡 Personalized Recommendations</h3>
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <div style="border-left: 4px solid #28a745; padding-left: 1rem;">
+                        <h4 style="color: #28a745; margin-bottom: 0.5rem;">✅ Strengths Identified</h4>
+                        <ul style="margin: 0; padding-left: 1rem; line-height: 1.6; font-size: 0.95rem;">
+                            {% if data.speech_analysis.score >= 70 %}
+                            <li>Strong speech quality and articulation</li>
+                            {% endif %}
+                            {% if data.body_language.posture_score >= 70 %}
+                            <li>Good posture and body language</li>
+                            {% endif %}
+                            {% if (data.speech_analysis.filler_words.um + data.speech_analysis.filler_words.uh + data.speech_analysis.filler_words.like) <= 2 %}
+                            <li>Minimal use of filler words</li>
+                            {% endif %}
+                            {% if data.confidence_score >= 70 %}
+                            <li>Confident speaking voice</li>
+                            {% endif %}
+                            {% if data.total_words >= 50 %}
+                            <li>Comprehensive responses</li>
+                            {% endif %}
+                            {% if not (data.speech_analysis.score >= 70 or data.body_language.posture_score >= 70 or data.confidence_score >= 70) %}
+                            <li>Completed the full interview session</li>
+                            <li>Willingness to participate and learn</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    <div style="border-left: 4px solid #ffc107; padding-left: 1rem;">
+                        <h4 style="color: #ffc107; margin-bottom: 0.5rem;">⚠️ Areas for Development</h4>
+                        <ul style="margin: 0; padding-left: 1rem; line-height: 1.6; font-size: 0.95rem;">
+                            {% if (data.speech_analysis.filler_words.um + data.speech_analysis.filler_words.uh + data.speech_analysis.filler_words.like) > 3 %}
+                            <li>Reduce filler words ("um", "uh", "like") - detected {{ data.speech_analysis.filler_words.um + data.speech_analysis.filler_words.uh + data.speech_analysis.filler_words.like }} instances</li>
+                            {% endif %}
+                            {% if data.body_language.posture_score < 60 %}
+                            <li>Improve posture and body language consistency</li>
+                            {% endif %}
+                            {% if data.speech_analysis.score < 60 %}
+                            <li>Work on speech clarity and pacing</li>
+                            {% endif %}
+                            {% if data.total_words < 30 %}
+                            <li>Provide more detailed and comprehensive responses</li>
+                            {% endif %}
+                            {% if data.confidence_score < 60 %}
+                            <li>Build confidence in presentation style</li>
+                            {% endif %}
+                            {% if data.response_time_score < 60 %}
+                            <li>Improve response timing and pacing</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    <div style="border-left: 4px solid var(--btn-bg); padding-left: 1rem;">
+                        <h4 style="color: var(--btn-bg); margin-bottom: 0.5rem;">🎯 Action Plan</h4>
+                        <ul style="margin: 0; padding-left: 1rem; line-height: 1.6; font-size: 0.95rem;">
+                            {% if data.speech_analysis.score < 70 %}
+                            <li>Practice speaking exercises daily for 10-15 minutes</li>
+                            {% endif %}
+                            {% if (data.speech_analysis.filler_words.um + data.speech_analysis.filler_words.uh + data.speech_analysis.filler_words.like) > 2 %}
+                            <li>Record yourself speaking and identify filler word patterns</li>
+                            {% endif %}
+                            {% if data.body_language.posture_score < 70 %}
+                            <li>Practice interviews in front of a mirror</li>
+                            {% endif %}
+                            <li>Research the company and role thoroughly before interviews</li>
+                            {% if data.total_words < 50 %}
+                            <li>Prepare detailed examples using the STAR method</li>
+                            {% endif %}
+                            <li>Join mock interview sessions for additional practice</li>
+                            {% if data.confidence_score < 60 %}
+                            <li>Practice power poses and confidence-building exercises</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="text-align: center; margin-top: 3rem;">
+            <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+                <button onclick="shareResults()" class="btn btn-secondary">
+                    📤 Share Results
+                </button>
+                <a href="{{ url_for('setup') }}" class="btn btn-secondary">
+                    🔄 Take Another Interview
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Filler Words Chart
+        const fillerCtx = document.getElementById('fillerWordsChart').getContext('2d');
+        new Chart(fillerCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Um', 'Uh', 'Like', 'You know'],
+                datasets: [{
+                    data: [{{ data.speech_analysis.filler_words.um }}, 
+                           {{ data.speech_analysis.filler_words.uh }}, 
+                           {{ data.speech_analysis.filler_words.like }}, 2],
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Posture Chart - Dynamic data based on actual posture analysis
+        const postureCtx = document.getElementById('postureChart').getContext('2d');
+        
+        // Process posture data from backend
+        const postureData = {{ data.posture_data|tojson }};
+        const postureScores = [];
+        const timeLabels = [];
+        
+        // Calculate posture scores over time intervals
+        if (postureData && postureData.length > 0) {
+            const interval = Math.max(1, Math.floor(postureData.length / 5)); // Divide into 5 time segments
+            for (let i = 0; i < 5; i++) {
+                const startIdx = i * interval;
+                const endIdx = Math.min((i + 1) * interval, postureData.length);
+                const segment = postureData.slice(startIdx, endIdx);
+                
+                // Calculate score for this segment
+                let score = 0;
+                segment.forEach(item => {
+                    switch(item.posture_class) {
+                        case 'Good Posture': score += 100; break;
+                        case 'Confident Expression': score += 85; break;
+                        case 'Nervous Expression': score += 40; break;
+                        case 'Slouching': score += 20; break;
+                        default: score += 60;
+                    }
+                });
+                postureScores.push(segment.length > 0 ? Math.round(score / segment.length) : 60);
+                timeLabels.push(`T${i + 1}`);
+            }
+        } else {
+            // Fallback data
+            postureScores.push(60, 65, 70, 68, 72);
+            timeLabels.push('T1', 'T2', 'T3', 'T4', 'T5');
+        }
+        
+        new Chart(postureCtx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Posture Score',
+                    data: postureScores,
+                    borderColor: '#623CEA',
+                    backgroundColor: 'rgba(98, 60, 234, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#623CEA',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Posture Score: ' + context.parsed.y + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Performance Chart - Dynamic data based on actual interview performance
+        const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+        
+        // Calculate dynamic performance scores
+        const speechScore = {{ data.speech_analysis.score or 0 }};
+        const bodyLanguageScore = {{ data.body_language.posture_score or 0 }};
+        const responseTimeScore = {{ data.response_time_score or 0 }};
+        const clarityScore = {{ data.speech_analysis.clarity or 0 }};
+        const confidenceScore = {{ data.confidence_score or 0 }};
+        const contentScore = {{ data.content_score or 0 }};
+        
+        new Chart(performanceCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Speech Quality', 'Body Language', 'Response Time', 'Clarity', 'Confidence', 'Content Quality'],
+                datasets: [{
+                    label: 'Your Performance',
+                    data: [speechScore, bodyLanguageScore, responseTimeScore, clarityScore, confidenceScore, contentScore],
+                    borderColor: '#058ED9',
+                    backgroundColor: 'rgba(5, 142, 217, 0.2)',
+                    pointBackgroundColor: '#058ED9',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#058ED9',
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    borderWidth: 3
+                }, {
+                    label: 'Average Candidate',
+                    data: [70, 65, 75, 70, 68, 72],
+                    borderColor: '#ccc',
+                    backgroundColor: 'rgba(204, 204, 204, 0.1)',
+                    pointBackgroundColor: '#ccc',
+                    pointBorderColor: '#fff',
+                    pointRadius: 4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        },
+                        angleLines: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.r + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Action functions
+        function shareResults() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'My PrepWise Interview Results',
+                    text: 'Check out my interview performance analysis!',
+                    url: window.location.href
+                });
+            } else {
+                alert('Sharing feature not supported on this device.');
+            }
+        }
+    </script>
+</body>
+</html>

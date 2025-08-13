@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepWise Analytics - Progress Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('setup') }}" class="logo">PrepWise</a>
+            <div class="nav-links">
+                <a href="{{ url_for('analytics') }}" style="color: var(--btn-bg); font-weight: bold;">Analytics</a>
+                <a href="{{ url_for('setup') }}">AI Coach</a>
+                <div class="profile-icon">{{ data.user_name[0].upper() if data.user_name else 'U' }}</div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container" style="padding: 2rem 0;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 3rem;">
+            <h1 style="color: var(--text-dark); font-size: 2.5rem; margin-bottom: 0.5rem;">
+                📊 Analytics Dashboard
+            </h1>
+            <p style="color: #666; font-size: 1.2rem;">
+                Track your interview progress and improvement over time
+            </p>
+            <div style="background: linear-gradient(135deg, var(--btn-bg), var(--border-purple)); color: white; display: inline-block; padding: 0.5rem 1rem; border-radius: 20px; margin-top: 1rem;">
+                <strong>{{ data.user_name }} - {{ data.total_sessions }} Sessions Completed</strong>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
+            <div class="analytics-card" style="text-align: center;">
+                <h3>🎯 Average Score</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">{{ data.average_score }}%</div>
+                <p style="color: #666;">Overall performance across all sessions</p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>📈 Improvement Trend</h3>
+                <div style="font-size: 2rem; font-weight: bold; margin: 1rem 0; color: {% if data.improvement_trend > 0 %}#28a745{% elif data.improvement_trend < 0 %}#dc3545{% else %}#666{% endif %};">
+                    {{ '+' if data.improvement_trend > 0 else '' }}{{ data.improvement_trend }}%
+                </div>
+                <p style="color: #666;">Progress from early to recent sessions</p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>🏆 Best Score</h3>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--btn-bg); margin: 1rem 0;">{{ data.recent_performance.best_score }}%</div>
+                <p style="color: #666;">Your highest interview score</p>
+            </div>
+            <div class="analytics-card" style="text-align: center;">
+                <h3>🎤 Most Improved</h3>
+                <div style="font-size: 1.2rem; font-weight: bold; color: var(--border-purple); margin: 1rem 0;">{{ data.recent_performance.most_improved_skill }}</div>
+                <p style="color: #666;">Your strongest area of growth</p>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 2rem; margin-bottom: 3rem;">
+            <!-- Progress Over Time -->
+            <div class="analytics-card">
+                <h3>📈 Progress Over Time</h3>
+                <canvas id="progressChart" width="400" height="150"></canvas>
+            </div>
+        </div>
+
+        <!-- Skills and Performance -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2rem; margin-bottom: 3rem;">
+            <div class="analytics-card">
+                <h3>🎯 Skills Breakdown</h3>
+                <canvas id="skillsRadarChart" width="300" height="300"></canvas>
+            </div>
+            <div class="analytics-card">
+                <h3>📊 Performance Distribution</h3>
+                <canvas id="performancePieChart" width="300" height="300"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent Performance Metrics -->
+        <div class="analytics-card" style="margin-bottom: 3rem;">
+            <h3>🏆 Performance Insights</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">Total Questions</h4>
+                    <p style="font-size: 1.8rem; font-weight: bold; color: var(--text-dark);">{{ data.recent_performance.total_questions }}</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">Words Spoken</h4>
+                    <p style="font-size: 1.8rem; font-weight: bold; color: var(--text-dark);">{{ data.recent_performance.total_words }}</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">Average Speech</h4>
+                    <p style="font-size: 1.8rem; font-weight: bold; color: var(--text-dark);">{{ data.skill_breakdown.speech }}%</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; text-transform: uppercase;">Average Confidence</h4>
+                    <p style="font-size: 1.8rem; font-weight: bold; color: var(--text-dark);">{{ data.skill_breakdown.confidence }}%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session History -->
+        <div class="analytics-card" style="margin-bottom: 3rem;">
+            <h3>📝 Recent Sessions</h3>
+            <div style="overflow-x: auto; margin-top: 1.5rem;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 1rem; text-align: left; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Date</th>
+                            <th style="padding: 1rem; text-align: center; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Overall Score</th>
+                            <th style="padding: 1rem; text-align: center; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Speech</th>
+                            <th style="padding: 1rem; text-align: center; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Confidence</th>
+                            <th style="padding: 1rem; text-align: center; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Questions</th>
+                            <th style="padding: 1rem; text-align: center; border-bottom: 2px solid var(--border-purple); color: var(--text-dark); font-weight: 600;">Words</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in data.sessions %}
+                        <tr style="border-bottom: 1px solid #e9ecef;">
+                            <td style="padding: 1rem;">{{ session.timestamp[:10] }}</td>
+                            <td style="padding: 1rem; text-align: center;">
+                                <span style="padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem; color: white; background: {% if session.overall_score >= 70 %}#28a745{% elif session.overall_score >= 50 %}var(--btn-bg){% else %}#dc3545{% endif %};">
+                                    {{ session.overall_score }}%
+                                </span>
+                            </td>
+                            <td style="padding: 1rem; text-align: center; color: var(--text-dark);">{{ session.speech_score }}%</td>
+                            <td style="padding: 1rem; text-align: center; color: var(--text-dark);">{{ session.confidence_score }}%</td>
+                            <td style="padding: 1rem; text-align: center; color: var(--text-dark);">{{ session.questions_answered }}/{{ session.total_questions }}</td>
+                            <td style="padding: 1rem; text-align: center; color: var(--text-dark);">{{ session.total_words }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Community Stats -->
+        {% if data.all_users_stats.total_users > 1 %}
+        <div class="analytics-card" style="margin-bottom: 3rem;">
+            <h3>🌍 Community Stats</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; margin: 1.5rem 0;">
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="font-size: 2rem; color: var(--btn-bg); margin-bottom: 0.5rem;">{{ data.all_users_stats.total_users }}</h4>
+                    <p style="color: #666; font-size: 0.9rem; text-transform: uppercase;">Total Users</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="font-size: 2rem; color: var(--btn-bg); margin-bottom: 0.5rem;">{{ data.all_users_stats.total_sessions }}</h4>
+                    <p style="color: #666; font-size: 0.9rem; text-transform: uppercase;">Total Sessions</p>
+                </div>
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); text-align: center;">
+                    <h4 style="font-size: 2rem; color: var(--btn-bg); margin-bottom: 0.5rem;">{{ data.all_users_stats.average_score }}%</h4>
+                    <p style="color: #666; font-size: 0.9rem; text-transform: uppercase;">Platform Average</p>
+                </div>
+            </div>
+            
+            {% if data.all_users_stats.top_performers %}
+            <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border: 2px solid var(--border-purple); margin-top: 1.5rem;">
+                <h4 style="margin-bottom: 1rem; color: var(--text-dark);">🏆 Top Performers</h4>
+                <ol style="padding-left: 1.5rem;">
+                    {% for performer in data.all_users_stats.top_performers %}
+                    <li style="padding: 0.3rem 0; color: var(--text-dark); font-weight: 500;">
+                        {{ performer[0] }} - <span style="color: var(--btn-bg); font-weight: bold;">{{ performer[1] }}%</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Action Buttons -->
+        <div style="display: flex; justify-content: center; gap: 1rem; margin-top: 3rem;">
+            <a href="{{ url_for('setup') }}" class="btn" style="text-decoration: none;">Start New Interview</a>
+            {% if data.has_session %}
+            <a href="{{ url_for('feedback') }}" class="btn btn-secondary" style="text-decoration: none;">View Last Feedback</a>
+            {% else %}
+            <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; text-decoration: none;" title="Complete an interview to view feedback">View Last Feedback (Complete Interview First)</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Chart.js Configuration
+        Chart.defaults.color = 'var(--text-dark)';
+        Chart.defaults.borderColor = 'var(--border-purple)';
+
+        // Progress Over Time Chart
+        const progressCtx = document.getElementById('progressChart').getContext('2d');
+        const sessions = {{ data.sessions | tojson }};
+        
+        const progressChart = new Chart(progressCtx, {
+            type: 'line',
+            data: {
+                labels: sessions.map((session, index) => `Session ${index + 1}`),
+                datasets: [{
+                    label: 'Overall Score',
+                    data: sessions.map(session => session.overall_score),
+                    borderColor: 'var(--btn-bg)',
+                    backgroundColor: 'rgba(5, 142, 217, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: 'var(--btn-bg)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 6
+                }, {
+                    label: 'Speech Score',
+                    data: sessions.map(session => session.speech_score),
+                    borderColor: 'var(--border-purple)',
+                    backgroundColor: 'rgba(98, 60, 234, 0.1)',
+                    fill: false,
+                    tension: 0.4
+                }, {
+                    label: 'Confidence Score',
+                    data: sessions.map(session => session.confidence_score),
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    fill: false,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Score (%)',
+                            color: 'var(--text-dark)'
+                        },
+                        grid: {
+                            color: 'rgba(98, 60, 234, 0.1)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Interview Sessions',
+                            color: 'var(--text-dark)'
+                        },
+                        grid: {
+                            color: 'rgba(98, 60, 234, 0.1)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            }
+        });
+
+        // Skills Radar Chart
+        const skillsRadarCtx = document.getElementById('skillsRadarChart').getContext('2d');
+        const skillsData = {{ data.skill_breakdown | tojson }};
+        
+        const skillsRadarChart = new Chart(skillsRadarCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Speech', 'Posture', 'Confidence', 'Content', 'Response Time'],
+                datasets: [{
+                    label: 'Your Skills',
+                    data: [
+                        skillsData.speech,
+                        skillsData.posture,
+                        skillsData.confidence,
+                        skillsData.content,
+                        skillsData.response_time
+                    ],
+                    borderColor: 'var(--btn-bg)',
+                    backgroundColor: 'rgba(5, 142, 217, 0.2)',
+                    pointBackgroundColor: 'var(--btn-bg)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            color: 'var(--text-dark)'
+                        },
+                        grid: {
+                            color: 'rgba(98, 60, 234, 0.2)'
+                        },
+                        angleLines: {
+                            color: 'rgba(98, 60, 234, 0.2)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    }
+                }
+            }
+        });
+
+        // Performance Distribution Pie Chart
+        const performancePieCtx = document.getElementById('performancePieChart').getContext('2d');
+        
+        // Calculate performance distribution
+        const excellentSessions = sessions.filter(s => s.overall_score >= 80).length;
+        const goodSessions = sessions.filter(s => s.overall_score >= 60 && s.overall_score < 80).length;
+        const averageSessions = sessions.filter(s => s.overall_score >= 40 && s.overall_score < 60).length;
+        const needsImprovementSessions = sessions.filter(s => s.overall_score < 40).length;
+        
+        const performancePieChart = new Chart(performancePieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Excellent (80%+)', 'Good (60-79%)', 'Average (40-59%)', 'Needs Improvement (<40%)'],
+                datasets: [{
+                    data: [excellentSessions, goodSessions, averageSessions, needsImprovementSessions],
+                    backgroundColor: [
+                        '#28a745',
+                        'var(--btn-bg)',
+                        '#ffc107',
+                        '#dc3545'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = sessions.length;
+                                const percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
+                                return `${context.label}: ${context.parsed} sessions (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

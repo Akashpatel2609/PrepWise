@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrepWise - Interview Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('setup') }}" class="logo">PrepWise</a>
+            <div class="nav-links">
+                <a href="{{ url_for('analytics') }}">Analytics</a>
+                <a href="{{ url_for('setup') }}">AI Coach</a>
+                <div class="profile-icon">U</div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <div class="content-center">
+            <div class="form-container">
+                <h1 style="text-align: center; margin-bottom: 2rem; color: var(--text-dark); font-size: 2.5rem;">
+                    Welcome to PrepWise
+                </h1>
+                <p style="text-align: center; margin-bottom: 2rem; color: #666; font-size: 1.1rem;">
+                    Set up your mock interview session
+                </p>
+
+                <form action="{{ url_for('waiting_room') }}" method="POST" id="setupForm">
+                    <div class="form-group">
+                        <label for="name" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Full Name</label>
+                        <input type="text" id="name" name="name" class="form-input" placeholder="Enter your full name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job_description" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Job Description</label>
+                        <textarea id="job_description" name="job_description" class="form-input form-textarea" 
+                                placeholder="Paste the job description or describe the role you're interviewing for..." required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="minutes_per_question" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Minutes per Question</label>
+                        <input type="number" id="minutes_per_question" name="minutes_per_question" class="form-input" 
+                               placeholder="1" min="1" max="30" value="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="total_time" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Total Interview Time (minutes)</label>
+                        <input type="number" id="total_time" name="total_time" class="form-input" 
+                               placeholder="1" min="1" max="180" value="1" required>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 8px;">
+                        <p style="color: var(--text-dark); font-weight: 500;">
+                            Estimated Questions: <span id="questionCount">6</span>
+                        </p>
+                    </div>
+
+                    <button type="submit" class="btn" style="width: 100%; margin-top: 2rem; padding: 1rem; font-size: 1.1rem;">
+                        Start Interview Setup
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Calculate number of questions dynamically
+        function updateQuestionCount() {
+            const totalTime = document.getElementById('total_time').value || 30;
+            const minutesPerQuestion = document.getElementById('minutes_per_question').value || 5;
+            const questionCount = Math.floor(totalTime / minutesPerQuestion);
+            document.getElementById('questionCount').textContent = questionCount;
+        }
+
+        document.getElementById('total_time').addEventListener('input', updateQuestionCount);
+        document.getElementById('minutes_per_question').addEventListener('input', updateQuestionCount);
+
+        // Form validation
+        document.getElementById('setupForm').addEventListener('submit', function(e) {
+            const name = document.getElementById('name').value.trim();
+            const jobDescription = document.getElementById('job_description').value.trim();
+            
+            if (!name || !jobDescription) {
+                e.preventDefault();
+                alert('Please fill in all required fields.');
+                return false;
+            }
+            
+            if (jobDescription.length < 50) {
+                e.preventDefault();
+                alert('Please provide a more detailed job description (at least 50 characters).');
+                return false;
+            }
+        });
+
+        // Initialize question count
+        updateQuestionCount();
+    </script>
+</body>
+</html>
