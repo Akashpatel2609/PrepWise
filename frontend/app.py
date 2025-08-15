@@ -8,7 +8,7 @@ from datetime import datetime
 import google.generativeai as genai
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
+app.secret_key = 'AIzaSyCV9sK0q3QZ9q9kaGnF2FdsCxI0h1LZfek'
 
 # Google Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "Your_gemini_Key")
@@ -1075,64 +1075,100 @@ Do not include any text before or after the JSON."""
 
 @app.route('/api/analyze-speech', methods=['POST'])
 def analyze_speech():
-    """Send audio data to backend speech analysis service"""
+    """Send audio data to backend speech analysis service and accumulate per-chunk transcript locally for feedback page."""
     try:
-        # Get audio data from frontend
         if 'audio' not in request.files:
             return jsonify({'error': 'No audio file provided'}), 400
-        
+
         audio_file = request.files['audio']
         session_id = session.get('session_id', 'unknown')
-        
+
+        # Ensure interview_data exists
+        if 'interview_data' not in session:
+            session['interview_data'] = {
+                'total_words': 0,
+                'total_speaking_time': 0.0,
+                'total_questions': session.get('num_questions', 1),
+                'questions_answered': 0,
+                'questions_skipped': 0,
+                'transcript': [],
+                'filler_words': {'um': 0, 'uh': 0, 'like': 0},
+                'posture_data': []
+            }
+
         print(f"Received audio file for analysis: {audio_file.filename}")
-        
-        # Try to send to real backend speech analysis service
+
+        # Try real backend
         try:
-            # Prepare the data for the backend API
             files = {'audio': (audio_file.filename, audio_file.stream, audio_file.content_type)}
             data = {'session_id': session_id}
-            
-            # Make request to FastAPI backend
+
             response = requests.post(
                 f"{BACKEND_API_URL}/api/analysis/speech-analysis",
-                files=files,
-                data=data,
-                timeout=30
+                files=files, data=data, timeout=30
             )
-            
-            if response.status_code == 200:
-                backend_result = response.json()
-                print(f"✅ Real speech analysis successful: {backend_result}")
-                
-                # Extract analysis data from backend response
-                analysis_data = backend_result.get('analysis', {})
-                
-                # Format the response to match frontend expectations
-                formatted_analysis = {
-                    'transcript': analysis_data.get('transcript_chunk', ''),
-                    'final_score': analysis_data.get('performance_metrics', {}).get('final_score', 0),
-                    'speaking_rate': analysis_data.get('audio_quality', {}).get('speaking_rate', 0),
-                    'filler_count': analysis_data.get('filler_words', {}).get('count', 0),
-                    'filler_rate': analysis_data.get('performance_metrics', {}).get('filler_rate', 0),
-                    'performance_level': analysis_data.get('performance_metrics', {}).get('performance_level', 'Unknown'),
-                    'word_count': analysis_data.get('performance_metrics', {}).get('word_count', 0),
-                    'analysis_type': analysis_data.get('analysis_type', 'real_backend_integration'),
-                    'confidence': analysis_data.get('confidence', 0.9)
-                }
-                
-                return jsonify({
-                    'status': 'success',
-                    'analysis': formatted_analysis
-                })
-            else:
-                print(f"❌ Backend request failed with status {response.status_code}: {response.text}")
+
+            if response.status_code != 200:
+                print(f"❌ Backend request failed: {response.status_code} {response.text}")
                 raise Exception(f"Backend returned status {response.status_code}")
-                
+
+            backend_result = response.json()
+            analysis_data = backend_result.get('analysis', {})
+
+            # Map backend -> frontend chunk
+            transcript_text = analysis_data.get('transcript_chunk', '') or ''
+            perf = analysis_data.get('performance_metrics', {}) or {}
+            aq = analysis_data.get('audio_quality', {}) or {}
+            fw = analysis_data.get('filler_words', {}) or {}
+            duration = analysis_data.get('duration', 0.0) or 0.0  # we added this in speech_service; defensively default to 0
+            confidence = analysis_data.get('confidence', 0.9)
+
+            # Build transcript entry expected by feedback.html
+            transcript_entry = {
+                'question_number': len(session['interview_data']['transcript']) + 1,
+                'question': session.get('last_question', ''),  # optional if you track it
+                'response': transcript_text,
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'duration': duration,  # number → template formats mm:ss
+                'confidence': confidence
+            }
+
+            # Update session interview_data
+            idata = session['interview_data']
+            idata['transcript'].append(transcript_entry)
+            idata['total_words'] += int(perf.get('word_count', 0) or 0)
+            idata['total_speaking_time'] += float(duration)
+            # merge filler words if present
+            breakdown = fw.get('breakdown', {})
+            for k in ('um', 'uh', 'like'):
+                idata['filler_words'][k] = idata['filler_words'].get(k, 0) + int(breakdown.get(k, 0) or 0)
+
+            # Consider a chunk “answered” if it has words
+            if perf.get('word_count', 0):
+                idata['questions_answered'] = max(idata.get('questions_answered', 0), transcript_entry['question_number'])
+
+            session['interview_data'] = idata
+            session.modified = True
+
+            # Return a simplified analysis for the calling JS
+            formatted_analysis = {
+                'transcript': transcript_text,
+                'final_score': int(perf.get('final_score', 0) or 0),
+                'speaking_rate': int(aq.get('speaking_rate', 0) or 0),
+                'filler_count': int(fw.get('count', 0) or 0),
+                'filler_rate': float(perf.get('filler_rate', 0.0) or 0.0),
+                'performance_level': perf.get('performance_level', 'Unknown'),
+                'word_count': int(perf.get('word_count', 0) or 0),
+                'analysis_type': analysis_data.get('analysis_type', 'real_backend_integration'),
+                'confidence': confidence,
+                'duration': duration,
+            }
+            return jsonify({'status': 'success', 'analysis': formatted_analysis})
+
         except requests.exceptions.RequestException as e:
             print(f"❌ Backend connection failed: {e}")
             print("⚠️ Falling back to mock analysis")
-            
-            # Fallback to mock analysis if backend is not available
+
             mock_analysis = {
                 'transcript': 'Backend unavailable - using mock transcription',
                 'final_score': 75,
@@ -1141,17 +1177,34 @@ def analyze_speech():
                 'filler_rate': 0.03,
                 'performance_level': 'Good',
                 'word_count': 45,
-                'analysis_type': 'mock_fallback_backend_unavailable'
+                'analysis_type': 'mock_fallback_backend_unavailable',
+                'confidence': 0.5,
+                'duration': 1.0
             }
-            
-            return jsonify({
-                'status': 'success',
-                'analysis': mock_analysis
+
+            # Also append mock to session so feedback has data
+            idata = session['interview_data']
+            idata['transcript'].append({
+                'question_number': len(idata['transcript']) + 1,
+                'question': session.get('last_question', ''),
+                'response': mock_analysis['transcript'],
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'duration': mock_analysis['duration'],
+                'confidence': mock_analysis['confidence']
             })
-        
+            idata['total_words'] += mock_analysis['word_count']
+            idata['total_speaking_time'] += mock_analysis['duration']
+            for k in ('um', 'uh', 'like'):
+                idata['filler_words'][k] = idata['filler_words'].get(k, 0) + (1 if k in ('um','uh') else 0)
+            session['interview_data'] = idata
+            session.modified = True
+
+            return jsonify({'status': 'success', 'analysis': mock_analysis})
+
     except Exception as e:
         print(f"Error in speech analysis: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     host = os.getenv("FRONTEND_HOST", "0.0.0.0")
