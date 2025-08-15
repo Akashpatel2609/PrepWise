@@ -1,22 +1,19 @@
-FROM python:3.10-slim
+# Dockerfile.frontend
+FROM python:3.11-slim
 
-# Set working directory
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Copy requirements first for better caching
 COPY frontend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+COPY frontend /app
 
-# Copy frontend code
-COPY frontend/ .
-
-# Create necessary directories
-RUN mkdir -p static/uploads
-
-# Expose port
+# Defaults (override via env at runtime)
+ENV PORT=5000
 EXPOSE 5000
 
-# Command to run the application
-CMD ["python", "app.py"]
+# Gunicorn for Flask
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
