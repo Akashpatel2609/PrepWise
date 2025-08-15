@@ -8,7 +8,7 @@ from datetime import datetime
 import google.generativeai as genai
 
 app = Flask(__name__)
-app.secret_key = 'AIzaSyCV9sK0q3QZ9q9kaGnF2FdsCxI0h1LZfek'
+app.secret_key = ''
 
 # Google Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "Your_gemini_Key")
