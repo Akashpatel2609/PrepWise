@@ -5,65 +5,34 @@ class InterviewManager {
 
     // Media
     this.mediaStream = null;
-    this.videoRecorder = null;  // optional (not uploaded)
-    this.audioRecorder = null;  // uploads audio chunks
+    this.videoRecorder = null;
+    this.audioRecorder = null;
     this.isRecording = false;
-
-    // Simple caches
-    this.analysisData = { speech: [], video: [], posture: [] };
 
     // Hooks/callbacks
     this.getQuestionNumber = options.getQuestionNumber || (() => (window.currentQuestionIndex || 1));
     this.getQuestionText   = options.getQuestionText   || (() => (window.currentQuestionText || ''));
     this.onTranscriptMerge = options.onTranscriptMerge || (payload => this.#defaultTranscriptMerge(payload));
 
-    // VAD state
+    // VAD
     this._isSpeaking = false;
     this._speakStartTs = 0;
 
-    // internal slicer timer (for headered chunks)
+    // slicer
     this._sliceTimer = null;
   }
 
-  // ---------- Public API ----------
+  // config knobs
+  static CHUNK_MS = 8000;          // ⬅️ longer chunks = better context
+  static AUDIO_BITS = 128000;      // ⬅️ higher bitrate for Opus/MP4
+
   async start(sessionId = null) {
     this.sessionId = sessionId || (typeof SESSION_ID !== 'undefined' ? SESSION_ID : null);
     await this.#startRecording();
     this.#startAudioLevelUI();
   }
-
   stop() { this.#stopRecording(); }
 
-  toggleMic() {
-    if (!this.mediaStream) return false;
-    const track = this.mediaStream.getAudioTracks()[0];
-    if (!track) return false;
-    track.enabled = !track.enabled;
-    return track.enabled;
-  }
-
-  toggleCamera() {
-    if (!this.mediaStream) return false;
-    const track = this.mediaStream.getVideoTracks()[0];
-    if (!track) return false;
-    track.enabled = !track.enabled;
-    return track.enabled;
-  }
-
-  getSummary() {
-    return {
-      isRecording: this.isRecording,
-      sessionId: this.sessionId,
-      tracks: this.mediaStream
-        ? {
-            audio: this.mediaStream.getAudioTracks().map(t => ({ enabled: t.enabled, label: t.label })),
-            video: this.mediaStream.getVideoTracks().map(t => ({ enabled: t.enabled, label: t.label }))
-          }
-        : null
-    };
-  }
-
-  // ---------- pick a portable audio MIME type ----------
   pickAudioMime() {
     const prefs = [
       'audio/webm;codecs=opus',
@@ -78,10 +47,9 @@ class InterviewManager {
     for (const t of prefs) {
       if (window.MediaRecorder?.isTypeSupported?.(t)) return t;
     }
-    return ''; // let browser decide
+    return '';
   }
 
-  // ---------- send a chunk to API (adds proper context) ----------
   async sendAudioChunk(blob, { sessionId, questionNumber } = {}) {
     try {
       const sid = sessionId || (window.SESSION_ID ?? this.sessionId ?? '');
@@ -89,8 +57,8 @@ class InterviewManager {
       const mime = blob.type || '';
 
       const name =
-        mime.includes('wav')  ? 'chunk.wav' :
-        mime.includes('ogg')  ? 'chunk.ogg' :
+        mime.includes('wav')  ? 'chunk.wav'  :
+        mime.includes('ogg')  ? 'chunk.ogg'  :
         mime.includes('mp4') || mime.includes('mpeg') ? 'chunk.m4a' :
         'chunk.webm';
 
@@ -100,24 +68,22 @@ class InterviewManager {
       form.append('session_id', sid);
       form.append('question_number', qn);
       form.append('mime', mime);
+      form.append('lang', 'en'); // optional hint for backend if you wire it
 
       const API_BASE = window.API_BASE || ''; // e.g. 'http://127.0.0.1:8000'
       const res = await fetch(`${API_BASE}/api/analysis/speech-analysis`, { method: 'POST', body: form });
 
-      // Robust JSON parse (avoid crashing on HTML error pages)
       const raw = await res.text();
       let data = null;
       try { data = JSON.parse(raw); } catch {
-        console.error('Non-JSON response from /api/analysis/speech-analysis:', raw.slice(0, 300));
+        console.error('Non-JSON from /speech-analysis:', raw.slice(0, 200));
         return;
       }
 
-      // per-word dev logging (like your old transcriber)
       if (data?.text) {
         data.text.split(/\s+/).filter(Boolean).forEach(w => console.log('[whisper]', w));
       }
 
-      // Quick UI feedback
       const speechEl = document.getElementById('speechStatus');
       if (speechEl && data?.analysis?.filler_count >= 0) {
         speechEl.textContent = data.analysis.filler_count > 0
@@ -125,7 +91,6 @@ class InterviewManager {
           : 'Clear speech';
       }
 
-      // Merge into local transcript
       if (data?.text?.trim()) {
         this.onTranscriptMerge({
           questionNumber: qn,
@@ -139,7 +104,6 @@ class InterviewManager {
     }
   }
 
-  // ---------- Default transcript merge ----------
   #defaultTranscriptMerge({ questionNumber, questionText, text, confidence }) {
     try {
       const id = window.interviewData || (window.interviewData = {
@@ -200,12 +164,18 @@ class InterviewManager {
     }
   }
 
-  // ---------- Private: start/stop media & recorders ----------
   async #startRecording() {
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: { sampleRate: 44100, channelCount: 1 }
+        // Turn OFF browser DSP to reduce artifacts
+        audio: {
+          channelCount: 1,
+          sampleRate: 48000,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
       });
 
       const videoEl = document.getElementById('interviewWebcam') || document.getElementById('webcam');
@@ -216,13 +186,13 @@ class InterviewManager {
         this.videoRecorder.start(1000);
       } catch (e) { console.warn('Video recorder not started:', e?.message || e); }
 
-      // AUDIO recorder (stop/restart slicing => headered blobs)
       const audioTrack = this.mediaStream.getAudioTracks()[0];
       const audioStream = new MediaStream([audioTrack]);
       const audioMime = this.pickAudioMime();
 
       const startNewRecorder = () => {
-        this.audioRecorder = new MediaRecorder(audioStream, audioMime ? { mimeType: audioMime } : undefined);
+        const opts = audioMime ? { mimeType: audioMime, audioBitsPerSecond: InterviewManager.AUDIO_BITS } : { audioBitsPerSecond: InterviewManager.AUDIO_BITS };
+        this.audioRecorder = new MediaRecorder(audioStream, opts);
 
         this.audioRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size) {
@@ -235,14 +205,14 @@ class InterviewManager {
 
         this.audioRecorder.onstop = () => {
           if (this._sliceTimer) { clearTimeout(this._sliceTimer); this._sliceTimer = null; }
-          if (this.isRecording) startNewRecorder(); // immediately roll a new segment
+          if (this.isRecording) startNewRecorder();
         };
 
-        this.audioRecorder.start(); // no timeslice; we cut manually
+        this.audioRecorder.start(); // manual slice
         this._sliceTimer = setTimeout(() => {
           try { this.audioRecorder.requestData(); } catch {}
           try { this.audioRecorder.stop(); } catch {}
-        }, 3000);
+        }, InterviewManager.CHUNK_MS);
       };
 
       startNewRecorder();
@@ -267,7 +237,6 @@ class InterviewManager {
     console.log('⏹️ Recording stopped');
   }
 
-  // ---------- Private: audio level UI + simple VAD ----------
   #startAudioLevelUI() {
     if (!this.mediaStream) return;
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -276,7 +245,6 @@ class InterviewManager {
     analyser.fftSize = 256;
     source.connect(analyser);
     const buf = new Uint8Array(analyser.frequencyBinCount);
-
     const speechEl = document.getElementById('speechStatus');
 
     let above = 0, below = 0;
@@ -286,7 +254,6 @@ class InterviewManager {
       if (!this.isRecording) { try { audioContext.close(); } catch(e){} return; }
       analyser.getByteFrequencyData(buf);
       const avg = buf.reduce((a,b)=>a+b,0) / buf.length;
-
       if (speechEl) speechEl.textContent = avg > THRESH ? 'Listening… (audio detected)' : 'Listening…';
 
       if (avg > THRESH) {

@@ -3,18 +3,23 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 from datetime import datetime
-
 from fastapi.responses import JSONResponse
 from collections import defaultdict
 import tempfile, subprocess, os
 
-# ---------- Helpers ----------
+from app.services.speech_service import SpeechAnalysisService
+
 def _ffmpeg_decode_to_wav_16k(src_path: str, dst_path: str) -> None:
-    """
-    Decode any input to mono 16kHz WAV using ffmpeg.
-    Raises CalledProcessError on failure (we catch and fallback later).
-    """
-    cmd = ["ffmpeg", "-y", "-i", src_path, "-ac", "1", "-ar", "16000", "-f", "wav", dst_path]
+    # High-quality resample with soxr + 16k mono PCM16 WAV
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-i", src_path,
+        "-ac", "1",
+        "-ar", "16000",
+        "-sample_fmt", "s16",
+        "-af", "aresample=resampler=soxr:precision=28",
+        "-f", "wav", dst_path
+    ]
     subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 def _filler_count_from_text(text: str) -> int:
@@ -30,17 +35,13 @@ def _speaking_rate_label(rate) -> str:
     if r <= 160: return "Good pace"
     return "Too fast"
 
-# ---------- Services & Router ----------
-from app.services.speech_service import SpeechAnalysisService
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 speech_service = SpeechAnalysisService()
 
-# ---------- Models ----------
 class AnalysisRequest(BaseModel):
     session_id: str
-    data_type: str  # 'audio', 'video', 'combined'
+    data_type: str
     data: dict
 
 class AnalysisResponse(BaseModel):
@@ -59,38 +60,26 @@ class FeedbackReport(BaseModel):
     recommendations: List[str]
     detailed_metrics: dict
 
-# ---------- In-memory stores ----------
 analysis_results = {}
 session_summaries = defaultdict(lambda: {
-    "chunks": [],                  # [{question_number, text, words, duration, confidence, timestamp}]
-    "total_words": 0,
-    "total_duration": 0.0,
+    "chunks": [], "total_words": 0, "total_duration": 0.0,
     "filler": {"um": 0, "uh": 0, "like": 0},
-    "rates": [],                   # speaking_rate numbers
-    "clarities": [],               # clarity_score numbers
-    "confidences": [],             # confidence 0..1
+    "rates": [], "clarities": [], "confidences": []
 })
 
-# ---------- Endpoints ----------
 @router.post("/audio", response_model=AnalysisResponse)
 async def analyze_audio(request: AnalysisRequest):
     try:
         speech_results = {
             "transcript": "This is a sample transcript of the user's response...",
             "filler_words": {"um": 2, "uh": 1, "like": 3},
-            "speaking_pace": "normal",
-            "clarity_score": 85,
-            "volume_level": "appropriate",
-            "pronunciation_issues": []
+            "speaking_pace": "normal", "clarity_score": 85,
+            "volume_level": "appropriate", "pronunciation_issues": []
         }
         analysis_id = f"audio_{request.session_id}_{len(analysis_results)}"
         response = AnalysisResponse(
-            analysis_id=analysis_id,
-            session_id=request.session_id,
-            analysis_type="audio",
-            results=speech_results,
-            confidence_score=0.92,
-            timestamp=str(datetime.now())
+            analysis_id=analysis_id, session_id=request.session_id, analysis_type="audio",
+            results=speech_results, confidence_score=0.92, timestamp=str(datetime.now())
         )
         analysis_results[analysis_id] = response.dict()
         return response
@@ -103,23 +92,14 @@ async def analyze_speech_file(
     audio: UploadFile = File(...),
     session_id: str = Form(...),
     question_number: Optional[int] = Form(None),
-    mime: Optional[str] = Form(None),   # <-- NEW
+    mime: Optional[str] = Form(None),
+    lang: Optional[str] = Form(None),
 ):
-    """
-    Analyze uploaded audio (chunked) using Whisper via SpeechAnalysisService.
-    - Try to transcode to 16kHz WAV for stable CPU inference.
-    - If ffmpeg decode fails, fallback to raw bytes.
-    - Normalize + store + aggregate for reports.
-    """
     tmp_in = None
     tmp_wav = None
     try:
-      # Log what we got
         mt = (mime or audio.content_type or "").lower()
-        logger.info(
-            "Received audio file for speech analysis: %s (mime=%s), session=%s, q=%s",
-            audio.filename, mt, session_id, str(question_number)
-        )
+        logger.info("Received audio: %s (mime=%s) session=%s q=%s", audio.filename, mt, session_id, str(question_number))
 
         if not getattr(speech_service, "initialized", False):
             await speech_service.initialize()
@@ -127,23 +107,16 @@ async def analyze_speech_file(
 
         raw_bytes = await audio.read()
 
-        # choose a suffix based on real mime/container
         if   "wav"  in mt: suffix = ".wav"
         elif "ogg"  in mt: suffix = ".ogg"
         elif "webm" in mt: suffix = ".webm"
         elif "mp4"  in mt or "mpeg" in mt or "m4a" in mt: suffix = ".m4a"
-        else:
-            suffix = os.path.splitext(audio.filename or "")[-1] or ".bin"
+        else: suffix = os.path.splitext(audio.filename or "")[-1] or ".bin"
 
         tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        tmp_in.write(raw_bytes)
-        tmp_in.flush()
-        tmp_in.close()
+        tmp_in.write(raw_bytes); tmp_in.flush(); tmp_in.close()
+        tmp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav"); tmp_wav.close()
 
-        tmp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        tmp_wav.close()
-
-        # Try decode → WAV
         try:
             _ffmpeg_decode_to_wav_16k(tmp_in.name, tmp_wav.name)
             with open(tmp_wav.name, "rb") as f:
@@ -152,27 +125,20 @@ async def analyze_speech_file(
         except subprocess.CalledProcessError as e:
             detail = (e.stderr or b"").decode("utf-8", errors="ignore")
             logger.error("ffmpeg decode failed: %s", detail)
-            # Fallback: try raw bytes
             try:
                 analysis_result = await speech_service.analyze_audio_chunk(raw_bytes, session_id)
             except Exception:
                 return JSONResponse({
-                    "ok": False,
-                    "error": "ffmpeg_decode_failed",
-                    "detail": detail,
-                    "session_id": session_id,
-                    "question_number": question_number,
-                    "text": "",
-                    "analysis": {"filler_count": 0, "confidence": 0.0},
+                    "ok": False, "error": "ffmpeg_decode_failed", "detail": detail,
+                    "session_id": session_id, "question_number": question_number,
+                    "text": "", "analysis": {"filler_count": 0, "confidence": 0.0},
                 }, status_code=200)
 
-        # Extract normalized fields
         transcript_text = (analysis_result.get("transcript_chunk")
                            or analysis_result.get("text")
                            or analysis_result.get("transcript")
                            or "").strip()
 
-        # per-word debug logging
         if transcript_text:
             for w in transcript_text.split():
                 logger.debug("[session %s] word: %s", session_id, w)
@@ -217,28 +183,18 @@ async def analyze_speech_file(
 
         analysis_id = f"audio_{session_id}_{len(analysis_results)}"
         record = AnalysisResponse(
-            analysis_id=analysis_id,
-            session_id=session_id,
-            analysis_type="audio",
-            results=normalized_results,
-            confidence_score=confidence,
-            timestamp=datetime.now().isoformat()
+            analysis_id=analysis_id, session_id=session_id, analysis_type="audio",
+            results=normalized_results, confidence_score=confidence, timestamp=datetime.now().isoformat()
         ).dict()
-
         analysis_results[analysis_id] = record
 
-        # aggregate session summary
         words = len([w for w in (transcript_text or "").split() if w.strip()])
         s = session_summaries[session_id]
         s["chunks"].append({
-            "question_number": question_number,
-            "text": transcript_text,
-            "words": words,
-            "duration": duration,
-            "confidence": confidence,
-            "timestamp": record["timestamp"],
+            "question_number": question_number, "text": transcript_text, "words": words,
+            "duration": duration, "confidence": confidence, "timestamp": record["timestamp"],
         })
-        s["total_words"]   += words
+        s["total_words"] += words
         s["total_duration"] += duration
         s["filler"]["um"]  += normalized_results["filler_words"]["um"]
         s["filler"]["uh"]  += normalized_results["filler_words"]["uh"]
@@ -250,28 +206,19 @@ async def analyze_speech_file(
         logger.info("Speech analysis stored for session %s (analysis_id=%s)", session_id, analysis_id)
 
         return {
-            "ok": True,
-            "status": "success",
-            "session_id": session_id,
-            "question_number": question_number,
+            "ok": True, "status": "success",
+            "session_id": session_id, "question_number": question_number,
             "text": transcript_text,
-            "analysis": {
-                "filler_count": int(filler_count),
-                "confidence": confidence,
-            },
+            "analysis": {"filler_count": int(filler_count), "confidence": confidence},
             "timestamp": record["timestamp"]
         }
 
     except Exception as e:
         logger.error(f"Speech analysis error: {str(e)}")
         return JSONResponse({
-            "ok": False,
-            "error": "transcription_failed",
-            "detail": str(e),
-            "session_id": session_id,
-            "question_number": question_number,
-            "text": "",
-            "analysis": {"filler_count": 0, "confidence": 0.0},
+            "ok": False, "error": "transcription_failed", "detail": str(e),
+            "session_id": session_id, "question_number": question_number,
+            "text": "", "analysis": {"filler_count": 0, "confidence": 0.0},
         }, status_code=200)
     finally:
         for p in ((tmp_in.name if tmp_in else None), (tmp_wav.name if tmp_wav else None)):
