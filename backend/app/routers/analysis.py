@@ -298,10 +298,16 @@ async def generate_feedback_report(session_id: str):
         transcript = []
         for qn in sorted(by_q.keys()):
             items = by_q[qn]
-            text = " ".join(i.get("text","") for i in items if i.get("text"))
-            duration = sum(i.get("duration",0.0) for i in items)
-            confidence = (sum(i.get("confidence",0.0) for i in items) / max(1,len(items)))
-            ts = items[0].get("timestamp","") if items else ""
+            text = " ".join(i.get("text", "") for i in items if i.get("text"))
+            words = sum(i.get("words", 0) for i in items) or len(text.split())
+            duration = sum(i.get("duration", 0.0) for i in items)
+            confidence = (sum(i.get("confidence", 0.0) for i in items) / max(1, len(items)))
+            ts = items[0].get("timestamp", "") if items else ""
+
+            # 🚫 filter out ghost rows (tiny/no content)
+            if words < 5 and duration < 1.0 and len(text.strip()) < 12:
+                continue
+
             transcript.append({
                 "question": f"Response to Question {qn}",
                 "response": text,
