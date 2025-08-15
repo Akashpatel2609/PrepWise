@@ -71,6 +71,7 @@ class InterviewManager {
       form.append('lang', 'en'); // optional hint for backend if you wire it
 
       const API_BASE = window.API_BASE || ''; // e.g. 'http://127.0.0.1:8000'
+      form.append('question_text', this.getQuestionText());
       const res = await fetch(`${API_BASE}/api/analysis/speech-analysis`, { method: 'POST', body: form });
 
       const raw = await res.text();
@@ -164,18 +165,23 @@ class InterviewManager {
     }
   }
 
+    async cutSliceNow() {
+    if (!this.audioRecorder) return;
+    return new Promise((resolve) => {
+      const rec = this.audioRecorder;
+      const done = () => { try { rec.removeEventListener('stop', done); } catch {} resolve(); };
+      try { rec.addEventListener('stop', done); } catch { resolve(); }
+      try { rec.requestData(); } catch {}
+      try { rec.stop(); } catch { resolve(); }
+    });
+  }
+
   async #startRecording() {
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-        // Turn OFF browser DSP to reduce artifacts
-        audio: {
-          channelCount: 1,
-          sampleRate: 48000,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
+        // cleaner mic capture
+        audio: { channelCount: 1, sampleRate: 48000, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
 
       const videoEl = document.getElementById('interviewWebcam') || document.getElementById('webcam');
@@ -189,30 +195,32 @@ class InterviewManager {
       const audioTrack = this.mediaStream.getAudioTracks()[0];
       const audioStream = new MediaStream([audioTrack]);
       const audioMime = this.pickAudioMime();
+      const BPS = 128000; // 128 kbps for better quality
 
       const startNewRecorder = () => {
-        const opts = audioMime ? { mimeType: audioMime, audioBitsPerSecond: InterviewManager.AUDIO_BITS } : { audioBitsPerSecond: InterviewManager.AUDIO_BITS };
+        const opts = audioMime ? { mimeType: audioMime, audioBitsPerSecond: BPS } : { audioBitsPerSecond: BPS };
         this.audioRecorder = new MediaRecorder(audioStream, opts);
+
+        // ⬇️ CAPTURE THE QUESTION NUMBER *AT SLICE START*
+        const fixedQN = (window.currentQuestionIndex || 1);
+        const sid = (window.SESSION_ID || this.sessionId || '');
 
         this.audioRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size) {
-            this.sendAudioChunk(e.data, {
-              sessionId: window.SESSION_ID || this.sessionId || '',
-              questionNumber: window.currentQuestionIndex || 1
-            });
+            this.sendAudioChunk(e.data, { sessionId: sid, questionNumber: fixedQN });
           }
         };
 
         this.audioRecorder.onstop = () => {
           if (this._sliceTimer) { clearTimeout(this._sliceTimer); this._sliceTimer = null; }
-          if (this.isRecording) startNewRecorder();
+          if (this.isRecording) startNewRecorder(); // next slice picks up any updated question number
         };
 
-        this.audioRecorder.start(); // manual slice
+        this.audioRecorder.start(); // manual slicing
         this._sliceTimer = setTimeout(() => {
           try { this.audioRecorder.requestData(); } catch {}
           try { this.audioRecorder.stop(); } catch {}
-        }, InterviewManager.CHUNK_MS);
+        }, 8000); // 8s chunks
       };
 
       startNewRecorder();
