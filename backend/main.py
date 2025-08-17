@@ -15,7 +15,8 @@ from app.routers import interview, analysis, questions
 from app.services.speech_service import SpeechAnalysisService
 from app.services.video_service import VideoAnalysisService
 from app.services.question_service import QuestionGeneratorService
-
+from dotenv import load_dotenv
+load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,7 +32,14 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000", "http://127.0.0.1:5000"],
+    allow_origins=[
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,7 +104,7 @@ async def websocket_interview_endpoint(websocket: WebSocket, session_id: str):
             # Receive data from client
             data = await websocket.receive_text()
             message = json.loads(data)
-            
+
             # Process based on message type
             if message["type"] == "audio_data":
                 # Process audio for speech analysis
@@ -107,17 +115,17 @@ async def websocket_interview_endpoint(websocket: WebSocket, session_id: str):
                     "type": "speech_analysis",
                     "data": analysis_result
                 }, session_id)
-                
+
             elif message["type"] == "video_frame":
                 # Process video frame for posture analysis
                 analysis_result = await video_service.analyze_frame(
                     message["data"], session_id
                 )
                 await manager.send_analysis_data({
-                    "type": "video_analysis", 
+                    "type": "video_analysis",
                     "data": analysis_result
                 }, session_id)
-                
+
             elif message["type"] == "audio_level":
                 # Simple audio level monitoring
                 await manager.send_analysis_data({
@@ -155,25 +163,25 @@ async def background_analysis_task():
 @app.on_event("startup")
 async def startup_event():
     logger.info("PrepWise API starting up...")
-    
+
     # Initialize services
     await speech_service.initialize()
     await video_service.initialize()
     await question_service.initialize()
-    
+
     # Start background tasks
     asyncio.create_task(background_analysis_task())
-    
+
     logger.info("PrepWise API startup complete")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("PrepWise API shutting down...")
-    
+
     # Cleanup services
     await speech_service.cleanup()
     await video_service.cleanup()
-    
+
     logger.info("PrepWise API shutdown complete")
 
 if __name__ == "__main__":

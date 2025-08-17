@@ -1,204 +1,141 @@
+# app/routers/questions.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import json
-import random
-import logging
+import logging, os, random
 
-router = APIRouter()
+from app.models.session_store import ensure_session, add_question, get_questions
+
 logger = logging.getLogger(__name__)
+router = APIRouter()
 
-class QuestionGenerationRequest(BaseModel):
+# ---------- Request/Response models ----------
+class GenerateRequest(BaseModel):
+    session_id: str
     job_description: str
-    num_questions: int
-    difficulty_level: Optional[str] = "medium"  # easy, medium, hard
+    num_questions: int = 1
+    difficulty_level: Optional[str] = "medium"
     question_types: Optional[List[str]] = ["behavioral", "technical", "situational"]
 
-class QuestionResponse(BaseModel):
-    question_id: str
-    question_text: str
-    question_type: str
-    difficulty: str
-    expected_duration: int  # in seconds
-
-class QuestionSet(BaseModel):
+class GeneratedQuestion(BaseModel):
+    ok: bool = True
     session_id: str
-    questions: List[QuestionResponse]
-    total_questions: int
-    estimated_duration: int
+    question: str
+    hint: Optional[str] = ""
+    type: Optional[str] = "behavioral"
+    source: str = "fallback"
+    index: int
 
-# Mock question database (replace with AI generation)
-QUESTION_TEMPLATES = {
-    "behavioral": [
-        "Tell me about yourself and your background.",
-        "Describe a time when you faced a significant challenge at work. How did you handle it?",
-        "Give me an example of a time when you had to work with a difficult team member.",
-        "Tell me about a project you're particularly proud of.",
-        "Describe a situation where you had to learn something new quickly.",
-        "How do you handle constructive criticism?",
-        "Tell me about a time when you made a mistake. How did you handle it?",
-        "Describe your leadership style with an example.",
-        "How do you prioritize your work when you have multiple deadlines?",
-        "Tell me about a time when you had to persuade someone to see your point of view."
+# ---------- Local fallback bank ----------
+FALLBACK = {
+    "general": [
+        ("Tell me about yourself.", "Give a concise overview and connect it to this role."),
+        ("Describe a project you’re proud of and the concrete impact it had.",
+         "Use STAR: Situation, Task, Action, Result."),
     ],
-    "technical": [
-        "What programming languages are you most comfortable with and why?",
-        "How do you approach debugging a complex problem?",
-        "Explain a technical concept you recently learned.",
-        "How do you stay updated with the latest technology trends?",
-        "Describe your experience with databases and data modeling.",
-        "What is your approach to code review and testing?",
-        "How do you handle technical debt in a project?",
-        "Explain your understanding of software architecture principles.",
-        "Describe a technical challenge you solved recently.",
-        "How do you ensure code quality and maintainability?"
+    "frontend": [
+        ("How would you improve performance in a large React view that feels janky?",
+         "Discuss profiling, memoization, virtualization, and lazy-loading."),
     ],
-    "situational": [
-        "How would you handle a situation where you disagree with your manager's decision?",
-        "What would you do if you were assigned a task outside your expertise?",
-        "How would you approach a project with an unrealistic deadline?",
-        "What would you do if you discovered a significant error in a project after it was completed?",
-        "How would you handle a situation where a client is unhappy with your work?",
-        "What would you do if you had to work with outdated technology?",
-        "How would you approach training a new team member?",
-        "What would you do if you were falling behind on a project deadline?",
-        "How would you handle a situation where you need resources that aren't available?",
-        "What would you do if you found out a colleague was not pulling their weight?"
-    ]
+    "backend": [
+        ("Design a resilient API endpoint that handles traffic spikes gracefully.",
+         "Talk through rate-limiting, retries, backoff, and caching."),
+    ],
+    "data": [
+        ("Walk me through your process to clean a messy dataset and validate correctness.",
+         "Mention missing values, outliers, validation, and reproducibility."),
+    ],
+    "ml": [
+        ("Design an end-to-end ML pipeline and explain how you’d monitor drift.",
+         "Cover data/versioning, training, eval, serving, and monitoring."),
+    ],
 }
 
-@router.post("/generate", response_model=QuestionSet)
-async def generate_questions(request: QuestionGenerationRequest):
-    """Generate interview questions based on job description"""
-    try:
-        questions = []
-        question_types = request.question_types or ["behavioral", "technical", "situational"]
-        
-        # For now, use random selection from templates
-        # In production, this would use AI (Deepseek/Ollama) to generate based on job description
-        
-        for i in range(request.num_questions):
-            question_type = random.choice(question_types)
-            question_text = random.choice(QUESTION_TEMPLATES[question_type])
-            
-            # Estimate duration based on question type and difficulty
-            base_duration = 120  # 2 minutes
-            if request.difficulty_level == "easy":
-                duration = base_duration - 30
-            elif request.difficulty_level == "hard":
-                duration = base_duration + 60
-            else:
-                duration = base_duration
-                
-            question = QuestionResponse(
-                question_id=f"q_{i+1}",
-                question_text=question_text,
-                question_type=question_type,
-                difficulty=request.difficulty_level,
-                expected_duration=duration
-            )
-            questions.append(question)
-        
-        total_duration = sum([q.expected_duration for q in questions])
-        
-        question_set = QuestionSet(
-            session_id=f"session_{random.randint(1000, 9999)}",
-            questions=questions,
-            total_questions=len(questions),
-            estimated_duration=total_duration
-        )
-        
-        return question_set
-    
-    except Exception as e:
-        logger.error(f"Question generation error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(e)}")
+def _pick_fallback(job_description: str) -> tuple[str, str, str]:
+    jd = (job_description or "").lower()
+    bucket = "general"
+    if any(k in jd for k in ("react","frontend","ui","css","typescript")):
+        bucket = "frontend"
+    elif any(k in jd for k in ("api","backend","django","flask","node","microservice")):
+        bucket = "backend"
+    elif any(k in jd for k in ("data analyst","sql","tableau","analytics")):
+        bucket = "data"
+    elif any(k in jd for k in ("ml","machine learning","pytorch","tensorflow")):
+        bucket = "ml"
+    q,h = random.choice(FALLBACK[bucket])
+    qtype = "technical" if bucket in ("frontend","backend","data","ml") else "behavioral"
+    return q,h,qtype
 
-@router.get("/sample/{question_type}")
-async def get_sample_questions(question_type: str, count: int = 5):
-    """Get sample questions by type"""
-    if question_type not in QUESTION_TEMPLATES:
-        raise HTTPException(status_code=400, detail="Invalid question type")
-    
-    sample_questions = random.sample(
-        QUESTION_TEMPLATES[question_type], 
-        min(count, len(QUESTION_TEMPLATES[question_type]))
-    )
-    
-    return {
-        "question_type": question_type,
-        "questions": sample_questions,
-        "count": len(sample_questions)
-    }
+def _try_gemini(job_description: str) -> Optional[str]:
+    """
+    Returns a single question string from Gemini, or None on failure/unavailable.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name)
+        prompt = (
+            "You are an interview coach. Create ONE concise, specific, role-relevant interview "
+            "question for this job description. Return ONLY the question text, nothing else.\n\n"
+            f"Job description:\n{job_description}\n"
+        )
+        # Synchronous call is fine here; if you prefer, wrap in asyncio.to_thread(...)
+        resp = model.generate_content(prompt)
+        text = (resp.text or "").strip()
+        # Clean possible quotes or markdown bullets
+        text = text.strip().strip("-•").strip()
+        return text or None
+    except Exception as e:
+        logger.warning("Gemini generation failed: %s", e)
+        return None
+
+@router.post("/generate", response_model=GeneratedQuestion)
+async def generate(req: GenerateRequest):
+    """
+    Generate a single interview question. Prefers Gemini if GEMINI_API_KEY is set,
+    otherwise falls back to curated bank.
+    """
+    try:
+        session = ensure_session(req.session_id, job_description=req.job_description)
+        # First try Gemini
+        q_text = _try_gemini(req.job_description)
+        source = "gemini" if q_text else "fallback"
+
+        if not q_text:
+            q_text, hint, qtype = _pick_fallback(req.job_description)
+        else:
+            # Make a lightweight hint for Gemini-generated question
+            hint = "Answer with STAR: Situation, Task, Action, Result."
+            qtype = "behavioral" if "experience" in q_text.lower() else "technical"
+
+        idx = len(get_questions(req.session_id)) + 1
+        q = {"id": f"q_{idx}", "text": q_text, "type": qtype, "hint": hint}
+        add_question(req.session_id, q)
+
+        return GeneratedQuestion(
+            ok=True,
+            session_id=req.session_id,
+            question=q_text,
+            hint=hint,
+            type=qtype,
+            source=source,
+            index=idx,
+        )
+    except Exception as e:
+        logger.exception("Question generation error")
+        raise HTTPException(status_code=500, detail=f"Failed to generate question: {e}")
 
 @router.get("/types")
 async def get_question_types():
-    """Get available question types"""
     return {
-        "types": list(QUESTION_TEMPLATES.keys()),
+        "types": ["behavioral", "technical", "situational"],
         "descriptions": {
-            "behavioral": "Questions about past experiences and behavior",
-            "technical": "Questions about technical skills and knowledge",
-            "situational": "Hypothetical scenarios and problem-solving questions"
-        }
-    }
-
-@router.post("/ai-generate")
-async def ai_generate_questions(request: QuestionGenerationRequest):
-    """Generate questions using AI (placeholder for Deepseek/Ollama integration)"""
-    try:
-        # Placeholder for AI integration
-        # This is where you would integrate with Deepseek or Ollama API
-        
-        ai_prompt = f"""
-        Generate {request.num_questions} interview questions for the following job description:
-        
-        Job Description: {request.job_description}
-        
-        Question Types: {', '.join(request.question_types)}
-        Difficulty Level: {request.difficulty_level}
-        
-        Return questions that are relevant, professional, and appropriate for the role.
-        """
-        
-        # Mock AI response (replace with actual AI call)
-        ai_questions = [
-            f"Based on the job description, {random.choice(QUESTION_TEMPLATES['behavioral'])}"
-            for _ in range(request.num_questions)
-        ]
-        
-        questions = []
-        for i, question_text in enumerate(ai_questions):
-            question = QuestionResponse(
-                question_id=f"ai_q_{i+1}",
-                question_text=question_text,
-                question_type=random.choice(request.question_types),
-                difficulty=request.difficulty_level,
-                expected_duration=120
-            )
-            questions.append(question)
-        
-        question_set = QuestionSet(
-            session_id=f"ai_session_{random.randint(1000, 9999)}",
-            questions=questions,
-            total_questions=len(questions),
-            estimated_duration=sum([q.expected_duration for q in questions])
-        )
-        
-        return question_set
-    
-    except Exception as e:
-        logger.error(f"AI question generation error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"AI question generation failed: {str(e)}")
-
-@router.get("/")
-async def get_random_question():
-    """Get a single random question"""
-    question_type = random.choice(list(QUESTION_TEMPLATES.keys()))
-    question_text = random.choice(QUESTION_TEMPLATES[question_type])
-    
-    return {
-        "question": question_text,
-        "type": question_type,
-        "id": f"random_{random.randint(100, 999)}"
+            "behavioral": "Past experiences and behavior",
+            "technical": "Skills and knowledge",
+            "situational": "Hypothetical scenarios",
+        },
     }

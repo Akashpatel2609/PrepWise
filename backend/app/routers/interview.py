@@ -1,12 +1,20 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Optional
-import uuid
 from datetime import datetime
-import json
+import uuid
+
+# Shared session store (questions asked + per-question transcripts)
+try:
+    from app.models.session_store import SESSIONS
+except Exception:
+    SESSIONS = {}
 
 router = APIRouter()
 
+# ---------------------------
+# Models
+# ---------------------------
 class InterviewSessionCreate(BaseModel):
     name: str
     job_description: str
@@ -31,18 +39,23 @@ class QuestionResponse(BaseModel):
     transcript: Optional[str] = None
     analysis_data: Optional[dict] = None
 
-# In-memory storage (replace with actual database)
+# ---------------------------
+# In-memory store (session metadata + uploads)
+# ---------------------------
 interview_sessions = {}
 question_responses = {}
 
+# ---------------------------
+# CRUD for interview sessions (metadata)
+# ---------------------------
 @router.post("/create", response_model=InterviewSessionResponse)
 async def create_interview_session(session_data: InterviewSessionCreate):
-    """Create a new interview session"""
+    """Create a new interview session (metadata)."""
     try:
         session_id = str(uuid.uuid4())
-        num_questions = session_data.total_time // session_data.minutes_per_question
-        
-        session = {
+        num_questions = max(1, session_data.total_time // max(1, session_data.minutes_per_question))
+
+        meta = {
             "session_id": session_id,
             "name": session_data.name,
             "job_description": session_data.job_description,
@@ -52,44 +65,71 @@ async def create_interview_session(session_data: InterviewSessionCreate):
             "created_at": datetime.now(),
             "status": "created"
         }
-        
-        interview_sessions[session_id] = session
-        
-        return InterviewSessionResponse(**session)
-    
+        interview_sessions[session_id] = meta
+
+        # Ensure a SESSIONS record exists for Q/A tracking
+        SESSIONS.setdefault(session_id, {"asked": [], "transcript": []})
+
+        return InterviewSessionResponse(**meta)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
 
 @router.get("/{session_id}", response_model=InterviewSessionResponse)
 async def get_interview_session(session_id: str):
-    """Get interview session details"""
+    """Get interview session metadata."""
     if session_id not in interview_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    
     return InterviewSessionResponse(**interview_sessions[session_id])
 
 @router.post("/{session_id}/start")
 async def start_interview_session(session_id: str):
-    """Start an interview session"""
+    """Mark a session as in progress."""
     if session_id not in interview_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    
     interview_sessions[session_id]["status"] = "in_progress"
     interview_sessions[session_id]["started_at"] = datetime.now()
-    
+    # Initialize SESSIONS if missing
+    SESSIONS.setdefault(session_id, {"asked": [], "transcript": []})
     return {"message": "Interview session started", "session_id": session_id}
 
 @router.post("/{session_id}/complete")
 async def complete_interview_session(session_id: str):
-    """Complete an interview session"""
+    """Mark a session completed."""
     if session_id not in interview_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    
     interview_sessions[session_id]["status"] = "completed"
     interview_sessions[session_id]["completed_at"] = datetime.now()
-    
     return {"message": "Interview session completed", "session_id": session_id}
 
+@router.delete("/{session_id}")
+async def delete_interview_session(session_id: str):
+    """Delete a session and any associated response uploads."""
+    if session_id not in interview_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    del interview_sessions[session_id]
+
+    # Delete associated responses
+    responses_to_delete = [
+        rid for rid, r in question_responses.items() if r["session_id"] == session_id
+    ]
+    for rid in responses_to_delete:
+        del question_responses[rid]
+
+    # Remove Q/A store
+    if session_id in SESSIONS:
+        del SESSIONS[session_id]
+
+    return {"message": "Session deleted successfully"}
+
+@router.get("/")
+async def list_interview_sessions():
+    """List all interview sessions (metadata)."""
+    return {"sessions": list(interview_sessions.values())}
+
+# ---------------------------
+# Minimal upload endpoint (optional – unused in speech-analysis flow)
+# ---------------------------
 @router.post("/{session_id}/response")
 async def submit_response(
     session_id: str,
@@ -98,24 +138,20 @@ async def submit_response(
     video_file: Optional[UploadFile] = File(None),
     transcript: Optional[str] = None
 ):
-    """Submit a response for a question"""
+    """Submit a response for a question (manual upload route; speech-analysis is preferred)."""
     if session_id not in interview_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     response_id = str(uuid.uuid4())
-    
-    # Save uploaded files (implement actual file storage)
     audio_path = None
     video_path = None
-    
+
+    # Placeholders – add real storage if you want to keep file artifacts
     if audio_file:
         audio_path = f"recordings/{session_id}_{question_id}_audio.wav"
-        # Save audio file logic here
-    
     if video_file:
         video_path = f"recordings/{session_id}_{question_id}_video.mp4"
-        # Save video file logic here
-    
+
     response_data = {
         "response_id": response_id,
         "session_id": session_id,
@@ -126,44 +162,32 @@ async def submit_response(
         "created_at": datetime.now(),
         "analysis_status": "pending"
     }
-    
     question_responses[response_id] = response_data
-    
     return {"message": "Response submitted", "response_id": response_id}
 
 @router.get("/{session_id}/responses")
 async def get_session_responses(session_id: str):
-    """Get all responses for a session"""
+    """Get all uploaded responses for a session (if you used the /response endpoint)."""
     if session_id not in interview_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    session_responses = [
-        response for response in question_responses.values()
-        if response["session_id"] == session_id
-    ]
-    
+    session_responses = [r for r in question_responses.values() if r["session_id"] == session_id]
     return {"session_id": session_id, "responses": session_responses}
 
-@router.delete("/{session_id}")
-async def delete_interview_session(session_id: str):
-    """Delete an interview session"""
-    if session_id not in interview_sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    del interview_sessions[session_id]
-    
-    # Delete associated responses
-    responses_to_delete = [
-        response_id for response_id, response in question_responses.items()
-        if response["session_id"] == session_id
-    ]
-    
-    for response_id in responses_to_delete:
-        del question_responses[response_id]
-    
-    return {"message": "Session deleted successfully"}
-
-@router.get("/")
-async def list_interview_sessions():
-    """List all interview sessions"""
-    return {"sessions": list(interview_sessions.values())}
+# ---------------------------
+# NEW: expose the Q/A memory used by Feedback (asked + transcript)
+# ---------------------------
+@router.get("/session/{session_id}")
+async def get_runtime_session_store(session_id: str):
+    """
+    Return the in-memory Q/A state used by the app:
+        {
+          "asked": ["Q1", "Q2", ...],
+          "transcript": [ {question_number, question, response, duration, confidence, timestamp}, ... ],
+          "current_question_number": int,
+          "current_question": str
+        }
+    """
+    sess = SESSIONS.get(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found in runtime store")
+    return sess
