@@ -6,7 +6,7 @@ import numpy as np
 import mediapipe as mp
 import logging
 import os
-from config import COLORS, ACTIONS
+from .config import COLORS, ACTIONS
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

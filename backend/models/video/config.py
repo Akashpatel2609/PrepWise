@@ -84,3 +84,6 @@ if len(COLORS) < len(ACTIONS):
 # Create directories
 os.makedirs(MODEL_PATH, exist_ok=True)
 os.makedirs('logs', exist_ok=True)
+
+ACTIONS = ["Good Posture", "Nervous Expression", "Confident Expression", "Slouching"]
+COLORS  = [(0,255,0),(0,200,255),(255,200,0),(255,0,0)]
